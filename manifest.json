@@ -1,0 +1,58 @@
+{
+  "name": "NexusStream",
+  "short_name": "NexusStream",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "description": "Next-generation AI automation workflow builder. Create visual automation processes without coding.",
+  "background_color": "#0A0E27",
+  "theme_color": "#142BDA",
+  "categories": ["productivity", "utilities", "business"],
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/9626/9626629.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/9626/9626629.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New Workflow",
+      "short_name": "New",
+      "description": "Create a new automation stream",
+      "url": "/?action=create",
+      "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/3524/3524388.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Dashboard",
+      "short_name": "Stats",
+      "description": "View execution logs",
+      "url": "/?action=dashboard",
+      "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/3076/3076135.png", "sizes": "192x192" }]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "https://images.unsplash.com/photo-1675271591211-126ad94e495d?w=1080&q=80",
+      "sizes": "1080x1920",
+      "type": "image/jpeg",
+      "form_factor": "narrow",
+      "label": "NexusStream Mobile Interface"
+    },
+    {
+      "src": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1920&q=80",
+      "sizes": "1920x1080",
+      "type": "image/jpeg",
+      "form_factor": "wide",
+      "label": "NexusStream Desktop Editor"
+    }
+  ]
+}

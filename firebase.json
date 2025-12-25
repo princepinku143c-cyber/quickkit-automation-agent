@@ -1,0 +1,20 @@
+
+{
+  "hosting": {
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "nexusstream",
+          "region": "us-west1"
+        }
+      }
+    ]
+  }
+}
