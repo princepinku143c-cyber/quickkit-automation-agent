@@ -6,29 +6,124 @@ export enum NexusType {
 }
 
 export enum NexusSubtype {
+  // --- CORE & UNIVERSAL ---
   WEBHOOK = 'WEBHOOK',
   SCHEDULE = 'SCHEDULE',
+  API_POLLER = 'API_POLLER',
   HTTP_REQUEST = 'HTTP_REQUEST',
-  AI_GENERATE = 'AI_GENERATE',
+  CODE_JS = 'CODE_JS',
   DELAY = 'DELAY',
   CONDITION = 'CONDITION',
+  SWITCH = 'SWITCH',
   LOGGER = 'LOGGER',
-  EMAIL = 'EMAIL',
-  WHATSAPP = 'WHATSAPP',
+  
+  // --- LOGIC / FLOW CONTROL ---
+  NO_OP = 'NO_OP',
+  EXECUTE_WORKFLOW = 'EXECUTE_WORKFLOW',
+  AI_ROUTER = 'AI_ROUTER', // NEW: DeepAgent Decision Node
+  
+  // --- AI / ML / TEXT TOOLS ---
+  AGENT = 'AGENT',             
+  AI_CHAT = 'AI_CHAT',         
+  AI_SUMMARIZE = 'AI_SUMMARIZE', 
+  AI_CLASSIFY = 'AI_CLASSIFY',   
+  AI_EXTRACT = 'AI_EXTRACT',     
+  AI_SENTIMENT = 'AI_SENTIMENT', 
+  AI_QA = 'AI_QA',               
+  DOC_LOADER = 'DOC_LOADER',     
+  VISION_ANALYSIS = 'VISION_ANALYSIS', 
+  VECTOR_STORE = 'VECTOR_STORE', 
+  
+  // --- PROVIDER SPECIFIC AI ---
+  OPENAI_CHAT = 'OPENAI_CHAT',
+  ANTHROPIC_CHAT = 'ANTHROPIC_CHAT',
+  GROQ_CHAT = 'GROQ_CHAT',
+
+  // --- GENERATIVE MEDIA ---
+  VEO_VIDEO_GEN = 'VEO_VIDEO_GEN',
+  AI_VIDEO_EDIT = 'AI_VIDEO_EDIT',
+  
+  // --- ADVANCED FLOW ---
+  ERROR_TRIGGER = 'ERROR_TRIGGER',
+  WAIT_FOR_WEBHOOK = 'WAIT_FOR_WEBHOOK',
+  
+  // --- DATA PROCESSING ---
+  MERGE = 'MERGE',
+  SET_VARIABLE = 'SET_VARIABLE',
+  SPLIT_BATCH = 'SPLIT_BATCH',
+  ITEM_LIST = 'ITEM_LIST',
+  
+  // --- EMAIL / MESSAGING / CHAT ---
+  EMAIL = 'EMAIL', 
   GMAIL = 'GMAIL',
+  OUTLOOK = 'OUTLOOK',
+  IMAP = 'IMAP',
+  MAILGUN = 'MAILGUN',
+  WHATSAPP = 'WHATSAPP',
+  SLACK = 'SLACK',
+  DISCORD = 'DISCORD',
+  TELEGRAM = 'TELEGRAM',
+  
+  // --- FILES / STORAGE ---
+  READ_BINARY_FILE = 'READ_BINARY_FILE',
+  WRITE_BINARY_FILE = 'WRITE_BINARY_FILE',
+  FTP = 'FTP',
+  AWS_S3 = 'AWS_S3',
+  GOOGLE_DRIVE = 'GOOGLE_DRIVE',
+  DRIVE_UPLOAD = 'DRIVE_UPLOAD',
+  
+  // --- DATABASES ---
+  MYSQL = 'MYSQL',
+  POSTGRES = 'POSTGRES',
+  MONGODB = 'MONGODB',
+  SQLITE = 'SQLITE',
+  SUPABASE = 'SUPABASE',
+  
+  // --- SHEETS / DOCS / CRMS ---
   SHEETS_READ = 'SHEETS_READ',
   SHEETS_WRITE = 'SHEETS_WRITE',
-  AGENT = 'AGENT',
-  CHAT_TRIGGER = 'CHAT_TRIGGER',
-  STATIC_DATA = 'STATIC_DATA',
-  WEB_SEARCH = 'WEB_SEARCH',
   NOTION = 'NOTION',
-  RAZORPAY = 'RAZORPAY',
   AIRTABLE = 'AIRTABLE',
+  HUBSPOT = 'HUBSPOT',
+  SALESFORCE = 'SALESFORCE',
+  ZENDESK = 'ZENDESK',
+  GOOGLE_CALENDAR = 'GOOGLE_CALENDAR',
+  
+  // --- DEV / OPS ---
+  GITHUB = 'GITHUB',
+  GITLAB = 'GITLAB',
+  JIRA = 'JIRA',
+  DOCKER = 'DOCKER',
+  SSH = 'SSH',
+  
+  // --- COMMERCE & PAYMENTS ---
+  RAZORPAY = 'RAZORPAY',
+  STRIPE = 'STRIPE',
   SHOPIFY = 'SHOPIFY',
   PAYMENT_VERIFY = 'PAYMENT_VERIFY',
   SUBSCRIPTION_CHECK = 'SUBSCRIPTION_CHECK',
-  PLAN_UPDATE = 'PLAN_UPDATE'
+  PLAN_UPDATE = 'PLAN_UPDATE',
+
+  // --- SOCIAL MEDIA ---
+  INSTAGRAM = 'INSTAGRAM',
+  FACEBOOK = 'FACEBOOK',
+  LINKEDIN = 'LINKEDIN',
+  YOUTUBE = 'YOUTUBE',
+  TIKTOK = 'TIKTOK',
+  TWITTER = 'TWITTER',
+
+  // --- FINANCE & CRYPTO ---
+  BINANCE_TRADE = 'BINANCE_TRADE',
+  CRYPTO_PRICE = 'CRYPTO_PRICE',
+  
+  // --- UTILS ---
+  RECAPTCHA = 'RECAPTCHA',
+  WEB_SEARCH = 'WEB_SEARCH',
+  STATIC_DATA = 'STATIC_DATA',
+  CHAT_TRIGGER = 'CHAT_TRIGGER',
+  
+  // --- DYNAMIC AI NODE ---
+  CUSTOM_AI_NODE = 'CUSTOM_AI_NODE' 
 }
 
 export type PlanTier = 'FREE' | 'PRO' | 'BUSINESS';
@@ -36,78 +131,53 @@ export type Region = 'IN' | 'GLOBAL';
 export type AppTheme = 'cyber' | 'nova' | 'matrix' | 'minimal';
 export type ProjectStatus = 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED';
 
-export interface UserPlan {
-  uid: string;
-  email: string;
-  tier: PlanTier;
-  region: Region;
-  status: 'active' | 'expired' | 'canceled';
-  expiresAt: number; // Timestamp
-  lastPaymentId?: string;
-  updatedAt: number;
-  // New Payment Fields
-  autoRenew: boolean;
-  appliedCoupon?: string;
-  originalPrice?: number;
-  finalPrice?: number;
-}
+export type DealStage = 'NEW' | 'QUALIFIED' | 'PROPOSAL' | 'NEGOTIATION' | 'WON';
 
-export interface CouponData {
-  code: string;
-  discountPercent: number;
-  validTiers: PlanTier[];
-  requiredAutoPay: boolean;
-}
-
-export interface PaymentTransaction {
-  id: string; // Internal ID
-  userId: string;
-  userEmail: string;
-  externalPaymentId: string; // PayPal/Razorpay ID
-  amount: number;
-  currency: 'INR' | 'USD';
-  gateway: 'razorpay' | 'paypal';
-  tier: PlanTier;
-  cycle: 'monthly' | 'yearly';
-  status: 'success' | 'failed';
-  couponUsed?: string;
+export interface Credential {
+  id: string;
+  name: string;
+  type: 'API_KEY' | 'OAUTH2' | 'BASIC_AUTH' | 'GEMINI' | 'OPENAI' | 'OAUTH2_APP';
+  data: Record<string, string>;
   createdAt: number;
 }
 
-export interface DNSRecord {
-  id: string;
-  type: 'A' | 'CNAME' | 'TXT';
-  host: string;
-  value: string;
-  ttl: string;
-  status: 'active' | 'pending';
+export interface NodeRequirements {
+    cost: 'FREE' | 'PAID_API' | 'SUBSCRIPTION';
+    signup: 'NONE' | 'GOOGLE' | 'PLATFORM_ACCOUNT' | 'MICROSOFT';
+    description: string;
 }
 
-export interface DomainInfo {
-  name: string;
-  status: 'connected' | 'pending' | 'error';
-  records: DNSRecord[];
+export interface DynamicField {
+    key: string;           
+    label: string;         
+    type: 'text' | 'number' | 'select' | 'toggle' | 'textarea' | 'json';
+    placeholder?: string;
+    options?: { label: string; value: string }[]; 
+    defaultValue?: any;
+    hint?: string;
+}
+
+export interface NexusDefinition {
+  type: NexusType;
+  subtype: NexusSubtype;
+  label: string;
+  icon: any;
+  description: string;
+  defaultConfig: NexusConfig;
+  category: string;
+  isPremium?: boolean;
+  requirements?: NodeRequirements;
 }
 
 export interface NexusConfig {
-  url?: string;
-  method?: string;
-  headers?: string;
-  body?: string;
-  cron?: string;
-  prompt?: string;
-  delayMs?: number;
-  condition?: string;
-  content?: string;
-  provider?: 'openai' | 'gemini';
-  paymentProvider?: string;
-  model?: string;
-  apiKey?: string;
-  systemMessage?: string;
-  enabledTools?: string[];
-  sheetId?: string;
-  range?: string;
   [key: string]: any;
+}
+
+export interface NexusStyle {
+    color?: string; 
+    shape?: 'DEFAULT' | 'ROUNDED' | 'PILL' | 'DIAMOND';
+    minimal?: boolean; 
+    width?: number; 
 }
 
 export interface Nexus {
@@ -117,7 +187,8 @@ export interface Nexus {
   label: string;
   position: { x: number; y: number };
   config: NexusConfig;
-  status?: 'idle' | 'running' | 'success' | 'error';
+  style?: NexusStyle; 
+  status?: 'idle' | 'running' | 'success' | 'error' | 'retrying'; 
   lastOutput?: any;
   outputs?: string[];
 }
@@ -133,11 +204,28 @@ export interface ExecutionLog {
   id: string;
   timestamp: number;
   nexusId: string;
-  status: 'success' | 'error';
+  status: 'success' | 'error' | 'retrying';
   message: string;
   duration: number;
   inputData?: any;
   outputData?: any;
+  usage?: {
+      tokens?: number; 
+      creditsCost: number; 
+  }
+}
+
+export interface ExecutionState {
+  runId: string;
+  userId: string;
+  projectId: string;
+  status: 'QUEUED' | 'RUNNING' | 'PAUSED' | 'COMPLETED' | 'FAILED';
+  currentQueue: string[];
+  completedNodeIds: string[];
+  context: Record<string, any>;
+  startTime: number;
+  lastUpdateTime: number;
+  nodeLimitCount: number;
 }
 
 export interface Blueprint {
@@ -151,24 +239,88 @@ export interface Blueprint {
 
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'thought'; 
   content: string;
   timestamp: number;
+  metadata?: any; 
 }
 
-// Updated Project Schema matching user request
+export interface ProjectSettings {
+    errorWorkflowId?: string;
+    timezone?: string;
+    executionTimeout?: number;
+    clientVariables?: Record<string, string>; 
+}
+
 export interface Project {
   id: string;
   userId: string;
   title: string;
   description: string;
   status: ProjectStatus;
-  nexuses: Nexus[]; // Acts as formData/content
+  nexuses: Nexus[]; 
   synapses: Synapse[];
+  settings?: ProjectSettings;
   tags: string[];
   createdAt: number;
   updatedAt: number;
   lastSavedAt?: number;
   completedAt?: number;
   thumbnail?: string;
+  publicFormEnabled?: boolean;
+  inputSchema?: DynamicField[]; 
 }
+
+export interface UserPlan {
+    uid: string;
+    email: string;
+    tier: PlanTier;
+    region: Region;
+    status: 'active' | 'expired' | 'cancelled';
+    expiresAt: number;
+    updatedAt: number;
+    autoRenew: boolean;
+    lastPaymentId?: string;
+    appliedCoupon?: string;
+    finalPrice?: number;
+    credits: number;
+    monthlyLimit: number;
+}
+
+export interface PaymentTransaction {
+    id: string;
+    userId: string;
+    userEmail: string;
+    externalPaymentId: string;
+    amount: number;
+    currency: 'INR' | 'USD';
+    gateway: 'razorpay' | 'paypal';
+    tier: PlanTier;
+    cycle: 'monthly' | 'yearly';
+    status: 'success' | 'failed' | 'pending';
+    couponUsed: string;
+    createdAt: number;
+}
+
+export interface CouponData {
+    code: string;
+    discountPercent: number;
+    validTiers: PlanTier[];
+    requiredAutoPay: boolean;
+}
+
+export interface MarketplaceItem {
+    id: string;
+    name: string;
+    description: string;
+    author: string;
+    downloads: number;
+    rating: number;
+    category: 'CONNECTOR' | 'AI_MODEL' | 'UTILITY' | 'ENTERPRISE';
+    isVerified: boolean;
+    isPro: boolean;
+    icon: any;
+    tags: string[];
+}
+
+export type PolicyType = 'TERMS' | 'PRIVACY' | 'REFUND';

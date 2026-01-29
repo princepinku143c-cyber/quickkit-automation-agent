@@ -1,193 +1,202 @@
 
-import React, { useState, memo } from 'react';
-import { Nexus, NexusSubtype } from '../types';
+import React, { useState, memo, useEffect } from 'react';
+import { Nexus, NexusSubtype, NexusType } from '../types';
 import { NEXUS_DEFINITIONS } from '../constants';
-import { AlertCircle, CheckCircle, Loader2, GripVertical, Power, Eye, HelpCircle, Settings } from 'lucide-react';
+import { Settings, ChevronDown, ChevronRight, Database, Link as LinkIcon } from 'lucide-react';
+import JsonTree from './JsonTree'; 
 
 interface NexusNodeProps {
   nexus: Nexus;
   isSelected: boolean;
   onSelect: (id: string) => void;
   onDragStart: (e: React.MouseEvent, id: string) => void;
-  onConnectStart: (e: React.MouseEvent, id: string, handle?: string) => void; 
+  onConnectStart: (e: React.MouseEvent, id: string, handle: string, x: number, y: number) => void; 
   onConnectEnd: (e: React.MouseEvent, id: string) => void;
   onOpenProperties: (id: string) => void;
+  onUpdate: (id: string, data: Partial<Nexus>) => void;
+  onContextMenu: (e: React.MouseEvent, id: string) => void;
+  isConnecting?: boolean; 
 }
 
 const NexusNode: React.FC<NexusNodeProps> = memo(({ 
-  nexus, isSelected, onSelect, onDragStart, onConnectStart, onConnectEnd, onOpenProperties 
+  nexus, isSelected, onSelect, onDragStart, onConnectStart, onConnectEnd, onOpenProperties, onUpdate, onContextMenu, isConnecting
 }) => {
-  const [showInspector, setShowInspector] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editLabel, setEditLabel] = useState(nexus.label);
+  const [isExpanded, setIsExpanded] = useState(false);
   
-  const def = NEXUS_DEFINITIONS.find(d => d.subtype === nexus.subtype) || {
-      icon: HelpCircle,
-      label: 'Unknown Block',
-      subtype: 'UNKNOWN',
-      description: 'Definition missing',
-      defaultConfig: {}
-  };
+  const def = NEXUS_DEFINITIONS.find(d => d.subtype === nexus.subtype) || NEXUS_DEFINITIONS[0];
   const Icon = def.icon;
+  const isTrigger = nexus.type === NexusType.TRIGGER;
 
-  const statusColor = {
-    idle: 'border-nexus-700 bg-nexus-800',
-    running: 'border-nexus-wire bg-nexus-800 shadow-[0_0_15px_rgba(255,215,0,0.5)]',
-    success: 'border-nexus-success bg-nexus-800 shadow-[0_0_15px_rgba(0,255,157,0.5)]',
-    error: 'border-nexus-danger bg-nexus-800 shadow-[0_0_15px_rgba(255,51,51,0.5)]',
-  }[nexus.status || 'idle'];
+  // Check if any config value contains a variable interpolation {{...}}
+  const hasDynamicData = Object.values(nexus.config).some(val => typeof val === 'string' && val.includes('{{') && val.includes('}}'));
 
-  const ledColor = {
-    idle: 'bg-nexus-600',
-    running: 'bg-nexus-wire animate-pulse',
-    success: 'bg-nexus-success',
-    error: 'bg-nexus-danger',
-  }[nexus.status || 'idle'];
-
-  const outputs = nexus.outputs && nexus.outputs.length > 0 ? nexus.outputs : ['default'];
-  const height = 88 + (outputs.length - 1) * 28;
-
-  const posX = nexus.position?.x ?? 0;
-  const posY = nexus.position?.y ?? 0;
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-      const touch = e.touches[0];
-      const mouseEvent = {
-          ...e,
-          clientX: touch.clientX,
-          clientY: touch.clientY,
-          stopPropagation: () => e.stopPropagation(),
-          preventDefault: () => {} 
-      } as unknown as React.MouseEvent;
-      onDragStart(mouseEvent, nexus.id);
+  // --- AESTHETIC ENGINE ---
+  const getStyles = () => {
+      if (nexus.type === NexusType.TRIGGER) return { accent: 'text-nexus-wire', border: 'border-nexus-wire/30', bg: 'bg-yellow-950/10', ring: 'ring-nexus-wire/50', socket: 'border-nexus-wire' };
+      if (nexus.subtype.includes('AI') || nexus.subtype === 'AGENT') return { accent: 'text-nexus-accent', border: 'border-nexus-accent/30', bg: 'bg-emerald-950/10', ring: 'ring-nexus-accent/50', socket: 'border-nexus-accent' };
+      if (nexus.type === NexusType.LOGIC) return { accent: 'text-purple-400', border: 'border-purple-500/30', bg: 'bg-purple-950/10', ring: 'ring-purple-500/50', socket: 'border-purple-500' };
+      return { accent: 'text-blue-400', border: 'border-blue-500/30', bg: 'bg-blue-950/10', ring: 'ring-blue-500/50', socket: 'border-blue-500' };
   };
 
-  const toggleInspector = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      setShowInspector(!showInspector);
+  const styles = getStyles();
+
+  useEffect(() => { setEditLabel(nexus.label); }, [nexus.label]);
+
+  const handleRenameSubmit = () => {
+      if (editLabel.trim()) onUpdate(nexus.id, { label: editLabel });
+      else setEditLabel(nexus.label);
+      setIsEditing(false);
   };
 
+  const { x, y } = nexus.position || { x: 0, y: 0 };
+  const outputs = nexus.subtype === NexusSubtype.CONDITION ? ['true', 'false'] : (nexus.outputs || ['default']);
+  
   return (
     <div
-      className={`absolute w-[260px] flex items-center group select-none font-mono transition-transform duration-100 ease-out active:scale-95`}
-      style={{ 
-        transform: `translate(${posX}px, ${posY}px)`,
-        zIndex: isSelected ? 50 : 10,
-        touchAction: 'none',
-        willChange: 'transform'
-      }}
-      onMouseDown={(e) => {
-        e.stopPropagation();
-        onDragStart(e, nexus.id);
-      }}
-      onTouchStart={handleTouchStart}
+      className="absolute group select-none transition-transform will-change-transform z-10"
+      style={{ transform: `translate3d(${x}px, ${y}px, 0)`, width: '260px' }}
+      onMouseDown={(e) => { e.stopPropagation(); onSelect(nexus.id); }}
+      onContextMenu={(e) => onContextMenu(e, nexus.id)} 
     >
-      {/* Input Port (Pin) */}
-      {nexus.type !== 'TRIGGER' && (
-        <div className="relative -mr-[1px] z-20 flex items-center">
-           <div className="w-4 h-2 bg-gray-500 border border-gray-700"></div>
-           <div 
-             className="absolute left-[-24px] top-[-15px] w-12 h-12 rounded-full flex items-center justify-center cursor-crosshair z-30"
-             onMouseUp={(e) => { e.stopPropagation(); onConnectEnd(e, nexus.id); }}
-             onTouchEnd={(e) => { e.stopPropagation(); onConnectEnd({} as any, nexus.id); }}
-           >
-              <div className="w-2.5 h-2.5 bg-nexus-600 border border-nexus-400 rounded-sm hover:bg-nexus-accent hover:border-nexus-accent transition-colors shadow-sm" />
-           </div>
-        </div>
-      )}
-
-      {/* Main Chip Body */}
-      <div 
-        className={`flex-1 flex flex-col rounded-sm border-2 ${statusColor} 
-          ${isSelected ? 'ring-2 ring-white/50' : ''}
-          shadow-lg relative overflow-visible`} 
-        style={{ height: `${height}px` }}
-      >
-        <div className="flex items-center px-3 py-2 bg-[#000000] border-b border-nexus-700 justify-between h-8 shrink-0">
-          <div className="flex items-center gap-2 overflow-hidden">
-            <Icon size={14} className="text-gray-400 flex-shrink-0" />
-            <span className="font-bold text-gray-200 text-xs tracking-wider uppercase truncate max-w-[140px]">
-              {def.subtype ? def.subtype.replace(/_/g, ' ') : 'UNKNOWN'}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* NEW: Settings Button */}
-            {isSelected && (
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenProperties(nexus.id);
+        {/* --- NODE CHASSIS --- */}
+        <div className={`
+            relative flex flex-col rounded-xl overflow-hidden transition-all duration-200
+            bg-[#09090b] shadow-xl
+            ${isSelected ? `ring-1 ${styles.ring} shadow-[0_0_30px_-10px_rgba(0,0,0,0.5)]` : 'ring-1 ring-white/10 hover:ring-white/20'}
+        `}>
+            
+            {/* --- HEADER (DRAG HANDLE) --- */}
+            <div 
+                className="h-10 flex items-center justify-between px-3 border-b border-white/5 cursor-grab active:cursor-grabbing bg-white/[0.02] relative group/header"
+                onMouseDown={(e) => { 
+                    e.stopPropagation(); 
+                    e.preventDefault(); 
+                    onDragStart(e, nexus.id); 
                 }}
-                className="p-1 bg-nexus-700/50 hover:bg-nexus-600 rounded-full text-gray-400 hover:text-white animate-in fade-in zoom-in-90 duration-150"
-              >
-                <Settings size={12} />
-              </button>
-            )}
-            <div className={`w-2 h-2 rounded-full ${ledColor} shadow-[0_0_5px_currentColor]`} />
-          </div>
-        </div>
-
-        <div className="p-3 bg-nexus-800 flex flex-col justify-between flex-1 relative overflow-hidden">
-          <div className="text-sm font-medium text-gray-100 truncate w-full" title={nexus.label}>
-            {nexus.label}
-          </div>
-          
-          <div className="flex items-center justify-between text-[10px] text-gray-500 font-mono pt-1 border-t border-nexus-700/50 mt-auto">
-             <span>ID: {nexus.id ? nexus.id.slice(-4) : '????'}</span>
-             <span>{nexus.status === 'idle' ? 'RDY' : nexus.status?.toUpperCase()}</span>
-          </div>
-
-          {(nexus.status === 'success' || nexus.status === 'error') && (
-              <div className="absolute top-2 right-2 z-30">
-                  <button 
-                    onClick={toggleInspector}
-                    className="p-1.5 bg-black/40 hover:bg-black rounded-full cursor-pointer backdrop-blur-sm"
-                  >
-                     <Eye size={12} className={nexus.status === 'success' ? "text-nexus-success" : "text-red-500"} />
-                  </button>
-                  
-                  {showInspector && (
-                    <div className="absolute top-full right-0 mt-1 w-60 p-2 bg-nexus-950 border border-nexus-700 rounded shadow-2xl z-50 animate-in fade-in slide-in-from-top-1 duration-150">
-                        <div className="flex justify-between items-center mb-1">
-                            <span className="text-[10px] text-gray-400 font-bold uppercase">Last Output</span>
-                            <button onClick={(e) => { e.stopPropagation(); setShowInspector(false); }} className="text-gray-500"><Power size={10}/></button>
-                        </div>
-                        <pre className="text-[9px] text-nexus-accent font-mono overflow-auto max-h-32 whitespace-pre-wrap break-all p-1 bg-black/50 rounded">
-                            {nexus.lastOutput ? JSON.stringify(nexus.lastOutput, null, 2) : 'No Data'}
-                        </pre>
+            >
+                <div className="flex items-center gap-2.5 z-10 w-full pointer-events-none">
+                    <div className={`w-6 h-6 rounded flex items-center justify-center ${styles.bg}`}>
+                        <Icon size={14} className={styles.accent} strokeWidth={2.5} />
                     </div>
-                  )}
-              </div>
-          )}
-        </div>
-      </div>
-
-      {/* Output Ports (Dynamic) */}
-      <div className="flex flex-col relative -ml-[1px] z-20 space-y-[20px] py-[36px]" style={{ position: 'absolute', right: '-16px', top: 0 }}>
-        {outputs.map((output, index) => (
-             <div 
-                key={output || index} 
-                className="relative flex items-center group/pin"
-                style={{ top: index * 4 }} 
-             >
-                <div className="w-4 h-2 bg-gray-500 border border-gray-700"></div>
-                <div 
-                    className="absolute right-[-24px] top-[-15px] w-12 h-12 rounded-full flex items-center justify-center cursor-crosshair z-30"
-                    onMouseDown={(e) => { e.stopPropagation(); onConnectStart(e, nexus.id, output); }}
-                    onTouchStart={(e) => {
-                         const touch = e.touches[0];
-                         const mouseEvent = { ...e, clientX: touch.clientX, clientY: touch.clientY, stopPropagation: () => e.stopPropagation() } as unknown as React.MouseEvent;
-                        onConnectStart(mouseEvent, nexus.id, output);
-                    }}
-                >
-                    <div className={`w-2.5 h-2.5 border rounded-full shadow-[0_0_5px_#ffd700] 
-                        ${output === 'default' ? 'bg-nexus-wire border-orange-500' : 'bg-nexus-accent border-green-500'}`} 
-                    />
+                    <div className="flex-1 min-w-0 flex items-center gap-2">
+                        <span className="text-[9px] font-mono text-gray-500 uppercase tracking-wide">
+                            {def.subtype.replace('_', ' ')}
+                        </span>
+                        {/* Auto-Wired Badge */}
+                        {hasDynamicData && (
+                            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-900/30 rounded border border-blue-500/20 text-[8px] text-blue-400 font-bold uppercase tracking-wider animate-in fade-in">
+                                <LinkIcon size={8} /> Linked
+                            </div>
+                        )}
+                    </div>
+                    {/* Status LED */}
+                    <div className={`w-1.5 h-1.5 rounded-full ${nexus.status === 'running' ? 'bg-nexus-accent animate-ping' : nexus.status === 'error' ? 'bg-red-500' : nexus.status === 'success' ? 'bg-nexus-success' : 'bg-gray-700'}`} />
                 </div>
-             </div>
-        ))}
-      </div>
+            </div>
 
+            {/* --- BODY --- */}
+            <div className="p-3 bg-[#09090b]">
+                <div onDoubleClick={(e) => { e.stopPropagation(); setIsEditing(true); }} className="mb-2">
+                    {isEditing ? (
+                        <input 
+                            value={editLabel} onChange={(e) => setEditLabel(e.target.value)}
+                            onBlur={handleRenameSubmit} onKeyDown={e => e.key === 'Enter' && handleRenameSubmit()}
+                            className="bg-black/50 border border-nexus-accent/50 rounded px-2 py-1 text-xs font-medium text-white outline-none w-full" autoFocus
+                        />
+                    ) : (
+                        <div className="text-xs font-medium text-gray-200 truncate tracking-tight hover:text-white transition-colors cursor-text">
+                            {nexus.label}
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex justify-between items-center group/id">
+                    <span className="text-[9px] font-mono text-gray-600 select-all">#{nexus.id.slice(-4)}</span>
+                    <button onClick={(e) => { e.stopPropagation(); onOpenProperties(nexus.id); }} className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-gray-500 hover:text-white">
+                        <Settings size={12}/>
+                    </button>
+                </div>
+
+                {nexus.lastOutput && (
+                    <div className="mt-3 pt-2 border-t border-white/5">
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
+                            className="w-full flex items-center justify-between text-[9px] font-bold text-gray-500 hover:text-nexus-accent transition-all"
+                        >
+                            <span className="flex items-center gap-1.5"><Database size={10}/> PAYLOAD</span>
+                            {isExpanded ? <ChevronDown size={10}/> : <ChevronRight size={10}/>}
+                        </button>
+                        {isExpanded && (
+                            <div className="mt-2 bg-black/50 rounded border border-white/5 p-2 max-h-32 overflow-y-auto custom-scrollbar">
+                                <JsonTree data={nexus.lastOutput} />
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        </div>
+
+        {/* --- INPUT PORT (TARGET) --- */}
+        {!isTrigger && (
+             <div 
+                className="absolute -left-[6px] top-[15px] z-50 w-4 h-4 flex items-center justify-center cursor-crosshair group/port"
+                onMouseUp={(e) => { 
+                    e.stopPropagation(); 
+                    e.preventDefault();
+                    onConnectEnd(e, nexus.id); 
+                }}
+             >
+                 <div className={`
+                    w-2.5 h-2.5 rounded-full bg-[#09090b] border border-gray-600 transition-all 
+                    group-hover/port:border-white group-hover/port:scale-125
+                    ${isConnecting ? 'ring-2 ring-white/50 bg-white scale-110 animate-pulse' : ''}
+                 `}>
+                    <div className="w-1 h-1 rounded-full bg-gray-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                 </div>
+                 
+                 <div className="absolute left-4 top-1/2 -translate-y-1/2 opacity-0 group-hover/port:opacity-100 transition-all bg-black border border-white/10 text-[9px] text-white px-2 py-1 rounded whitespace-nowrap pointer-events-none z-50">
+                     Input
+                 </div>
+             </div>
+        )}
+
+        {/* --- OUTPUT PORTS (SOURCE) --- */}
+        <div className="absolute -right-[6px] top-[15px] flex flex-col gap-[24px] z-50">
+            {outputs.map((output, idx) => (
+                <div key={output} className="relative flex items-center justify-center w-4 h-4">
+                     {/* Label for Conditional */}
+                     {nexus.subtype === NexusSubtype.CONDITION && (
+                         <span className={`absolute right-5 text-[9px] font-bold uppercase tracking-wider pointer-events-none ${output === 'true' ? 'text-nexus-success' : 'text-red-400'}`}>
+                             {output === 'true' ? 'YES' : 'NO'}
+                         </span>
+                     )}
+
+                     <div 
+                        className={`
+                            w-2.5 h-2.5 rounded-full bg-[#09090b] border flex items-center justify-center cursor-crosshair transition-all hover:scale-125
+                            ${output === 'true' ? 'border-nexus-success bg-nexus-success/10' : 
+                              output === 'false' ? 'border-red-500 bg-red-500/10' : 
+                              `${styles.socket} hover:bg-white hover:border-white`}
+                        `}
+                        onMouseDown={(e) => { 
+                            e.stopPropagation(); 
+                            e.preventDefault();
+                            // Calculate exact center of this port
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const centerX = rect.left + rect.width / 2;
+                            const centerY = rect.top + rect.height / 2;
+                            onConnectStart(e, nexus.id, output, centerX, centerY); 
+                        }}
+                     >
+                        <div className={`w-1 h-1 rounded-full ${output === 'true' ? 'bg-nexus-success' : output === 'false' ? 'bg-red-500' : 'bg-gray-400'}`} />
+                     </div>
+                </div>
+            ))}
+        </div>
     </div>
   );
 });
 
-export default NexusNode;
+export default memo(NexusNode);

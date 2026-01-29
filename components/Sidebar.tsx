@@ -1,11 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { NEXUS_DEFINITIONS, BLUEPRINTS } from '../constants';
+import { BLUEPRINTS } from '../data/blueprints'; 
 import { NexusSubtype, NexusType, Blueprint, Nexus, Synapse } from '../types';
-import { Layers, FileJson, ArrowRight, Flame, Globe, Brain, TrendingUp, Building2, Save, Trash, History, X, Download, Upload, LogIn, LogOut, User, Settings, Cloud, CloudRain, Loader2, Crown, Lock, Activity, LayoutGrid, Home } from 'lucide-react';
+import { Layers, ArrowRight, Zap, Building2, Globe, Brain, Split, GitMerge, HardDrive, Database, Terminal, MessageCircle, LayoutGrid, User, Key, LogIn, LogOut, Loader2, Crown, ShieldCheck, Search, X, Box, Cpu } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { saveBlueprintToCloud, getUserBlueprints, deleteBlueprintFromCloud } from '../services/cloudStore';
+import { getUserBlueprints } from '../services/cloudStore';
 import PricingModal from './PricingModal';
+import MarketplaceModal from './MarketplaceModal'; 
+import NodeLibrary from './sidebar/NodeLibrary'; 
 
 interface SidebarProps {
   isOpen: boolean;
@@ -15,38 +17,50 @@ interface SidebarProps {
   onClear: () => void; 
   onOpenSettings: () => void;
   onNavigateProjects: () => void;
-  currentView: 'dashboard' | 'editor';
+  onOpenCredentials?: () => void; 
+  onOpenRegistry?: () => void;
+  currentView: 'dashboard' | 'editor'; 
   currentStream?: { nexuses: Nexus[], synapses: Synapse[] };
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBlueprint, onClear, onOpenSettings, onNavigateProjects, currentView, currentStream }) => {
-  const [activeTab, setActiveTab] = useState<'blocks' | 'blueprints' | 'history'>('blocks');
-  const [savedStreams, setSavedStreams] = useState<Blueprint[]>([]);
-  const [isSaving, setIsSaving] = useState(false);
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBlueprint, onClear, onOpenSettings, onNavigateProjects, onOpenCredentials, onOpenRegistry, currentView, currentStream }) => {
+  const [activeTab, setActiveTab] = useState<'blocks' | 'blueprints'>('blocks');
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isMarketplaceOpen, setIsMarketplaceOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState(''); 
+
   const { user, signInWithGoogle, logout } = useAuth();
 
-  useEffect(() => {
-    const loadSaves = async () => {
-        if (activeTab === 'history') {
-            if (user) {
-                const cloudSaves = await getUserBlueprints(user.uid);
-                setSavedStreams(cloudSaves);
-            } else {
-                const loaded = JSON.parse(localStorage.getItem('nexus_saved_streams') || '[]');
-                setSavedStreams(loaded);
-            }
-        }
-    };
-    loadSaves();
-  }, [activeTab, user]);
+  const handleLogin = async () => {
+      if (isSigningIn) return;
+      setIsSigningIn(true);
+      try { await signInWithGoogle(); } 
+      catch (error) { console.error("Login trigger failed", error); } 
+      finally { setIsSigningIn(false); }
+  };
+
+  const groupedBlueprints = BLUEPRINTS.reduce((acc, bp) => {
+      const cat = bp.category || 'Other';
+      if (!acc[cat]) acc[cat] = [];
+      acc[cat].push(bp);
+      return acc;
+  }, {} as Record<string, Blueprint[]>);
+
+  const getCategoryIcon = (cat: string) => {
+      switch(cat) {
+          case 'Simple Start': return <Zap size={14} className="text-green-400"/>; 
+          case 'Input / Trigger': return <Zap size={14} className="text-nexus-wire"/>;
+          case 'Logic / Flow control': return <Split size={14} className="text-pink-400"/>;
+          case 'AI & Intelligence': return <Brain size={14} className="text-nexus-accent"/>;
+          default: return <LayoutGrid size={14} className="text-gray-400"/>;
+      }
+  };
 
   return (
     <>
       <PricingModal isOpen={isPricingOpen} onClose={() => setIsPricingOpen(false)} />
-      <input type="file" ref={fileInputRef} className="hidden" />
+      <MarketplaceModal isOpen={isMarketplaceOpen} onClose={() => setIsMarketplaceOpen(false)} />
 
       {isOpen && (
         <div className="fixed inset-0 bg-black/80 z-30 md:hidden" onClick={onClose} />
@@ -68,75 +82,122 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBl
         </div>
 
         {/* Global Navigation */}
-        <div className="p-3 border-b border-nexus-800 grid grid-cols-2 gap-2">
+        <div className="p-3 border-b border-nexus-800 grid grid-cols-2 gap-1">
             <button 
                 onClick={onNavigateProjects}
-                className={`p-2 rounded-lg text-[10px] font-bold uppercase flex items-center justify-center gap-2 transition-all ${currentView === 'dashboard' ? 'bg-nexus-accent text-black' : 'bg-nexus-800 text-gray-400 hover:text-white'}`}
+                className={`p-2 rounded-lg text-[9px] font-bold uppercase flex flex-col items-center justify-center gap-1 transition-all ${currentView === 'dashboard' ? 'bg-nexus-accent text-black' : 'bg-nexus-800 text-gray-400 hover:text-white'}`}
             >
                 <LayoutGrid size={14} /> Projects
             </button>
             <button 
-                 disabled={currentView === 'dashboard'} // Can't go to editor without selecting project (handled by parent usually)
-                 className={`p-2 rounded-lg text-[10px] font-bold uppercase flex items-center justify-center gap-2 transition-all ${currentView === 'editor' ? 'bg-nexus-wire text-black' : 'bg-nexus-950 text-gray-600 cursor-not-allowed'}`}
+                 disabled={currentView === 'dashboard'} 
+                 className={`p-2 rounded-lg text-[9px] font-bold uppercase flex flex-col items-center justify-center gap-1 transition-all ${currentView === 'editor' ? 'bg-nexus-wire text-black' : 'bg-nexus-950 text-gray-600 cursor-not-allowed'}`}
             >
                 <Layers size={14} /> Editor
             </button>
         </div>
 
-        {/* Editor Content (Only if in Editor Mode) */}
+        {/* Credentials & Marketplace Row */}
+        <div className="px-3 py-2 border-b border-nexus-800 grid grid-cols-3 gap-2">
+             <button 
+                onClick={onOpenCredentials}
+                className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg bg-nexus-900 hover:bg-nexus-800 text-[8px] font-black text-gray-400 hover:text-white transition-colors uppercase"
+             >
+                 <Key size={12}/> Secrets
+             </button>
+             <button 
+                onClick={() => setIsMarketplaceOpen(true)}
+                className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg bg-nexus-900 hover:bg-nexus-800 text-[8px] font-black text-nexus-accent border border-nexus-800 hover:border-nexus-accent transition-colors uppercase"
+             >
+                 <Box size={12}/> Market
+             </button>
+             <button 
+                onClick={onOpenRegistry}
+                className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg bg-nexus-900 hover:bg-nexus-800 text-[8px] font-black text-blue-400 hover:text-white transition-colors uppercase"
+             >
+                 <Cpu size={12}/> Kernel
+             </button>
+        </div>
+
+        {/* Editor Content */}
         {currentView === 'editor' ? (
         <>
-            {/* Tabs */}
             <div className="flex border-b border-nexus-800 mt-2">
                 <button onClick={() => setActiveTab('blocks')} className={`flex-1 p-3 text-[10px] font-bold flex items-center justify-center gap-1 ${activeTab === 'blocks' ? 'bg-nexus-800 text-nexus-accent border-b-2 border-nexus-accent' : 'text-gray-500'}`}>BLOCKS</button>
                 <button onClick={() => setActiveTab('blueprints')} className={`flex-1 p-3 text-[10px] font-bold flex items-center justify-center gap-1 ${activeTab === 'blueprints' ? 'bg-nexus-800 text-nexus-accent border-b-2 border-nexus-accent' : 'text-gray-500'}`}>TEMPLATES</button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                {activeTab === 'blocks' && (
+            {activeTab === 'blocks' && (
+                <NodeLibrary 
+                    onAddNexus={onAddNexus} 
+                    onUpgradeClick={() => setIsPricingOpen(true)} 
+                    isDevMode={false} 
+                />
+            )}
+                
+            {activeTab === 'blueprints' && (
+                <div className="flex-1 overflow-y-auto p-3 space-y-4 custom-scrollbar">
+                    <div className="relative mb-2">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={14} />
+                        <input 
+                            type="text" 
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Search templates..."
+                            className="w-full bg-nexus-900 border border-nexus-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:border-nexus-accent outline-none"
+                        />
+                    </div>
+
                     <div className="space-y-4">
-                        {['TRIGGER', 'ACTION', 'LOGIC'].map(type => (
-                            <div key={type}>
-                                <h3 className="text-[10px] font-bold text-nexus-500 uppercase tracking-widest mb-2 px-1">{type}s</h3>
-                                <div className="space-y-1.5">
-                                    {NEXUS_DEFINITIONS.filter(d => d.type === type).map(def => (
-                                        <button
-                                            key={def.subtype}
-                                            onClick={() => def.isPremium ? setIsPricingOpen(true) : onAddNexus(def.type, def.subtype)}
-                                            className={`w-full flex items-center justify-between p-2.5 rounded-lg border transition-all text-left group relative ${def.isPremium ? 'bg-nexus-950/50 border-nexus-800/50 opacity-60 grayscale' : 'bg-nexus-800/50 hover:bg-nexus-700/50 border-transparent hover:border-nexus-accent/30'}`}
-                                        >
-                                            <div className="flex items-center gap-3 overflow-hidden">
-                                                <div className={`p-1.5 rounded bg-nexus-900 ${def.isPremium ? 'text-gray-600' : 'text-nexus-accent'}`}>
-                                                    <def.icon size={16} />
-                                                </div>
-                                                <div className="truncate">
-                                                    <div className="text-xs font-bold text-gray-200">{def.label}</div>
-                                                    <div className="text-[9px] text-gray-500 truncate">{def.description}</div>
-                                                </div>
+                        {groupedBlueprints['Simple Start'] && (
+                            <div key="Simple Start">
+                                <h3 className="text-[10px] font-bold text-nexus-success uppercase tracking-widest mb-2 flex items-center gap-2 px-2">
+                                    <Zap size={14} /> Quick Starters
+                                </h3>
+                                <div className="space-y-2">
+                                    {groupedBlueprints['Simple Start'].map(bp => (
+                                        <div key={bp.id} className="p-3 rounded-xl bg-nexus-success/10 border border-nexus-success/30 group hover:border-nexus-success/50 transition-all cursor-pointer" onClick={() => onLoadBlueprint(bp)}>
+                                            <div className="flex justify-between items-start mb-1">
+                                                <h4 className="font-bold text-xs text-white">{bp.name}</h4>
+                                                <ArrowRight size={12} className="text-nexus-success"/>
                                             </div>
-                                            {def.isPremium && <Lock size={12} className="text-nexus-wire flex-shrink-0 ml-2" />}
-                                        </button>
+                                            <p className="text-[10px] text-gray-400 line-clamp-2">{bp.description}</p>
+                                        </div>
                                     ))}
                                 </div>
                             </div>
-                        ))}
+                        )}
+
+                        {Object.entries(groupedBlueprints).map(([category, blueprints]) => {
+                            if (category === 'Simple Start') return null; 
+                            const visibleBps = blueprints.filter(bp => bp.name.toLowerCase().includes(searchTerm.toLowerCase()));
+                            if (visibleBps.length === 0) return null;
+
+                            return (
+                                <div key={category}>
+                                    <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2 px-2">
+                                        {getCategoryIcon(category)} {category}
+                                    </h3>
+                                    <div className="space-y-2">
+                                        {visibleBps.map(bp => (
+                                            <div key={bp.id} className="p-3 rounded-xl bg-nexus-800/30 border border-nexus-800 group hover:border-nexus-500 transition-all">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <h4 className="font-bold text-xs text-white leading-tight">{bp.name}</h4>
+                                                    <span className="text-[9px] bg-nexus-900 text-gray-500 px-1.5 py-0.5 rounded border border-nexus-800">{bp.nexuses.length} Nodes</span>
+                                                </div>
+                                                <p className="text-[10px] text-gray-500 mb-3 line-clamp-2 leading-relaxed">{bp.description}</p>
+                                                <button onClick={() => onLoadBlueprint(bp)} className="w-full py-1.5 bg-nexus-900 group-hover:bg-nexus-accent group-hover:text-black border border-nexus-700 rounded-lg text-[9px] font-bold uppercase transition-all flex items-center justify-center gap-1">
+                                                    Deploy <ArrowRight size={10} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
-                )}
-                
-                {activeTab === 'blueprints' && (
-                    <div className="space-y-4">
-                        {BLUEPRINTS.map(bp => (
-                            <div key={bp.id} className="p-4 rounded-xl bg-nexus-800/50 border border-nexus-700">
-                                 <h4 className="font-bold text-xs text-white mb-1">{bp.name}</h4>
-                                 <p className="text-[10px] text-gray-500 mb-3">{bp.description}</p>
-                                 <button onClick={() => onLoadBlueprint(bp)} className="w-full py-2 bg-nexus-900 hover:bg-nexus-accent hover:text-black border border-nexus-700 rounded-lg text-[10px] font-bold uppercase transition-all flex items-center justify-center gap-1">
-                                    Load Template <ArrowRight size={10} />
-                                 </button>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
+                </div>
+            )}
         </>
         ) : (
              <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
@@ -145,7 +206,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBl
                 </div>
                 <div>
                     <h3 className="text-sm font-bold text-gray-300">Project Dashboard</h3>
-                    <p className="text-xs text-gray-500 mt-2">Select or create a project to open the editor tools.</p>
+                    <p className="text-xs text-gray-500 mt-2">Manage your automation workflows here.</p>
                 </div>
              </div>
         )}
@@ -153,18 +214,36 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBl
         {/* User Profile / Status */}
         <div className="p-4 border-t border-nexus-800 bg-nexus-950">
              {user ? (
-                 <div className="flex items-center gap-3">
-                     {user.photoURL ? <img src={user.photoURL} className="w-8 h-8 rounded-full border border-nexus-700" alt=""/> : <div className="w-8 h-8 rounded-full bg-nexus-800 flex items-center justify-center"><User size={14}/></div>}
-                     <div className="flex-1 overflow-hidden">
-                         <div className="text-xs font-bold text-white truncate">{user.displayName}</div>
-                         <div className="text-[9px] text-gray-500 truncate">{user.email}</div>
+                 <div className="flex flex-col gap-2">
+                     <div className="flex items-center gap-3">
+                         {user.photoURL ? <img src={user.photoURL} className="w-8 h-8 rounded-full border border-nexus-700" alt=""/> : <div className="w-8 h-8 rounded-full bg-nexus-800 flex items-center justify-center"><User size={14}/></div>}
+                         <div className="flex-1 overflow-hidden">
+                             <div className="text-xs font-bold text-white truncate flex items-center gap-1">
+                                 {user.displayName}
+                             </div>
+                             <div className="text-[9px] text-gray-500 truncate">{user.email}</div>
+                         </div>
+                         
+                         <button onClick={logout} className="p-1.5 hover:bg-red-900/30 text-gray-500 hover:text-red-500 rounded"><LogOut size={14}/></button>
                      </div>
-                     <button onClick={logout} className="p-1.5 hover:bg-red-900/30 text-gray-500 hover:text-red-500 rounded"><LogOut size={14}/></button>
+                     <div className="flex justify-between items-center bg-nexus-900/50 p-2 rounded-lg border border-nexus-800">
+                         <span className="text-[9px] font-mono text-gray-500 uppercase">Current Plan</span>
+                         <span className="text-[9px] bg-green-900/30 text-green-400 border border-green-800 px-2 py-0.5 rounded flex items-center gap-1 font-bold">
+                             <ShieldCheck size={10}/> Free Tier
+                         </span>
+                     </div>
                  </div>
              ) : (
-                 <button onClick={signInWithGoogle} className="w-full py-2 bg-nexus-800 hover:bg-nexus-700 border border-nexus-700 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-2">
-                     <LogIn size={14}/> Sign In
-                 </button>
+                 <div className="space-y-2">
+                     <button 
+                        onClick={handleLogin} 
+                        disabled={isSigningIn}
+                        className="w-full py-3 bg-nexus-accent text-black rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-nexus-success transition-all shadow-lg"
+                    >
+                         {isSigningIn ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14}/>} 
+                         {isSigningIn ? "Connecting..." : "Sign In with Google"}
+                     </button>
+                 </div>
              )}
         </div>
       </div>

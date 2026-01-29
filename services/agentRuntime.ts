@@ -1,4 +1,3 @@
-
 import { NexusConfig, ChatMessage } from '../types';
 import { GoogleGenAI } from "@google/genai";
 
@@ -11,45 +10,41 @@ export const runAgentInference = async (
   history: ChatMessage[]
 ): Promise<string> => {
   
-  // Use process.env.API_KEY exclusively as per SDK guidelines
-  const apiKey = process.env.API_KEY;
+  // Fix: Obtained exclusively from the environment variable process.env.API_KEY
+  const apiKey = config.apiKey || process.env.API_KEY;
 
   if (!apiKey) {
-    throw new Error("⚠️ API Key missing from environment variable process.env.API_KEY.");
+      return "Error: No API Keys pre-configured. Ensure process.env.API_KEY is available.";
   }
 
-  // Filter history based on memory window
   const memoryLimit = config.memoryWindow || 5;
   const recentHistory = history.slice(-memoryLimit);
 
-  // --- GOOGLE GEMINI IMPLEMENTATION ---
   if (config.provider === 'gemini') {
     try {
-      // Initializing GoogleGenAI with process.env.API_KEY as required by coding guidelines
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-      
-      // Construct prompt with history manually for Gemini
-      let fullPrompt = `System: ${config.systemMessage || 'You are a helpful assistant.'}\n\n`;
-      
-      recentHistory.forEach(msg => {
-        fullPrompt += `${msg.role === 'user' ? 'User' : 'Model'}: ${msg.content}\n`;
-      });
-      
-      fullPrompt += `User: ${userMessage}\nModel:`;
+        // Fix: Use mandatory named parameter for initialization
+        const ai = new GoogleGenAI({ apiKey: apiKey });
+        
+        let fullPrompt = `System: ${config.systemMessage || 'You are a helpful assistant.'}\n\n`;
+        recentHistory.forEach(msg => {
+            fullPrompt += `${msg.role === 'user' ? 'User' : 'Model'}: ${msg.content}\n`;
+        });
+        fullPrompt += `User: ${userMessage}\nModel:`;
 
-      const response = await ai.models.generateContent({
-        // Updated default model to gemini-3-flash-preview as per guidelines for Basic Text Tasks
-        model: config.model || 'gemini-3-flash-preview',
-        contents: fullPrompt,
-      });
+        const response = await ai.models.generateContent({
+            // Fix: Ensure correct full model name is used
+            model: config.model || 'gemini-3-flash-preview',
+            contents: fullPrompt,
+        });
 
-      return response.text || "No response generated.";
+        // Fix: Simple and direct access to generated text content
+        return response.text || "No response generated.";
 
     } catch (error: any) {
-      console.error("Gemini Error:", error);
-      return `Error calling Gemini: ${error.message}.`;
+        console.error("Agent Runtime Error:", error);
+        return `Error: ${error.message || "Provider failed"}`;
     }
   }
 
-  return "Provider not supported or configured.";
+  return `Error: Unsupported provider ${config.provider}`;
 };

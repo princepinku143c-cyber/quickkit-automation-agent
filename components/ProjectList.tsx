@@ -1,32 +1,39 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Project, ProjectStatus } from '../types';
-import { Search, Plus, Trash2, Layout, Clock, Edit2, CheckCircle, FileText, RefreshCw } from 'lucide-react';
+import { Search, Plus, Trash2, Layout, Clock, PlayCircle, ShieldAlert, WifiOff } from 'lucide-react';
+import { checkDbConnection } from '../services/projectService';
+import { useAuth } from '../context/AuthContext';
 
 interface ProjectListProps {
   projects: Project[];
   onCreateProject: (title: string, desc: string) => void;
   onOpenProject: (project: Project) => void;
   onDeleteProject: (id: string) => void;
-  onRefresh?: () => void; // New Prop
+  onRefresh?: () => void;
+  onInternalLaunch?: (projectId: string) => void; 
 }
 
-const ProjectList: React.FC<ProjectListProps> = ({ projects, onCreateProject, onOpenProject, onDeleteProject, onRefresh }) => {
+const ProjectList: React.FC<ProjectListProps> = ({ projects, onCreateProject, onOpenProject, onDeleteProject, onRefresh, onInternalLaunch }) => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'ALL' | ProjectStatus>('ALL');
   const [search, setSearch] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [dbStatus, setDbStatus] = useState<'CONNECTED' | 'LOCKED' | 'OFFLINE'>('CONNECTED');
 
-  // Filter Logic
+  useEffect(() => {
+      checkDbConnection().then(res => setDbStatus(res.status));
+  }, []);
+
   const filteredProjects = projects.filter(p => {
     const matchesTab = activeTab === 'ALL' || p.status === activeTab;
     const matchesSearch = p.title.toLowerCase().includes(search.toLowerCase());
     return matchesTab && matchesSearch;
   });
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
     onCreateProject(newTitle, newDesc);
@@ -35,167 +42,101 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onCreateProject, on
     setNewDesc('');
   };
 
-  const handleManualRefresh = () => {
-    if (onRefresh) {
-        setIsRefreshing(true);
-        onRefresh();
-        setTimeout(() => setIsRefreshing(false), 1000);
-    }
-  };
-
-  // Relative Time Helper
-  const formatTimeAgo = (timestamp: number) => {
-    const diff = (Date.now() - timestamp) / 1000;
-    if (diff < 60) return 'Just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return new Date(timestamp).toLocaleDateString();
-  };
-
   const getStatusBadge = (status: ProjectStatus) => {
     switch (status) {
-      case 'DRAFT': return <span className="px-2 py-0.5 rounded bg-gray-800 text-gray-400 text-[9px] font-bold border border-gray-700 uppercase">DRAFT</span>;
-      case 'IN_PROGRESS': return <span className="px-2 py-0.5 rounded bg-blue-900/30 text-blue-400 text-[9px] font-bold border border-blue-800 uppercase">IN PROGRESS</span>;
-      case 'COMPLETED': return <span className="px-2 py-0.5 rounded bg-nexus-success/10 text-nexus-success text-[9px] font-bold border border-nexus-success/30 uppercase flex items-center gap-1"><CheckCircle size={8}/> DONE</span>;
+      case 'DRAFT': return <span className="px-2 py-0.5 rounded bg-gray-800 text-gray-500 text-[9px] font-black border border-gray-700">DRAFT</span>;
+      case 'IN_PROGRESS': return <span className="px-2 py-0.5 rounded bg-blue-900/30 text-blue-400 text-[9px] font-black border border-blue-800">ACTIVE</span>;
+      case 'COMPLETED': return <span className="px-2 py-0.5 rounded bg-nexus-success/10 text-nexus-success text-[9px] font-black border border-nexus-success/30 flex items-center gap-1">DONE</span>;
     }
   };
 
   return (
     <div className="flex-1 h-full bg-[#050505] overflow-y-auto p-6 md:p-10 font-sans">
       
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold text-white mb-2 flex items-center gap-2">
-            <Layout className="text-nexus-accent" /> My Projects
-            <span className="text-xs bg-nexus-800 text-gray-400 px-2 py-1 rounded-full font-mono">{projects.length}</span>
+          <h1 className="text-3xl font-black text-white mb-2 flex items-center gap-3">
+            <Layout className="text-nexus-accent" /> Workspaces
+            <span className="text-xs bg-nexus-800 text-gray-500 px-2 py-1 rounded-lg font-mono">{projects.length}</span>
           </h1>
-          <p className="text-gray-400 text-sm">Manage your automation workflows and drafts.</p>
+          <p className="text-gray-500 text-sm font-medium">Manage and deploy your automated workflows.</p>
         </div>
         <div className="flex gap-3">
-             {onRefresh && (
-                 <button 
-                    onClick={handleManualRefresh}
-                    className="p-3 bg-nexus-900 border border-nexus-800 rounded-xl hover:bg-nexus-800 text-gray-400 hover:text-white transition-all"
-                    title="Force Refresh List"
-                 >
-                     <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''} />
-                 </button>
+             {/* Show DB Status only if locked/offline to alert user */}
+             {dbStatus !== 'CONNECTED' && !user?.isAnonymous && (
+                 <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border ${dbStatus === 'LOCKED' ? 'bg-red-900/20 border-red-800 text-red-500' : 'bg-gray-900 border-gray-800 text-gray-500'}`}>
+                     {dbStatus === 'LOCKED' ? <ShieldAlert size={14}/> : <WifiOff size={14}/>}
+                     <span className="text-[9px] font-black uppercase">{dbStatus === 'LOCKED' ? 'Rules Restricted' : 'Offline'}</span>
+                 </div>
              )}
-            <button 
+
+             <button 
               onClick={() => setIsCreating(true)}
-              className="px-6 py-3 bg-nexus-accent text-black font-bold rounded-xl hover:scale-105 transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(0,255,157,0.3)]"
+              className="p-3 bg-nexus-900 text-nexus-accent border border-nexus-800 rounded-xl hover:bg-nexus-800 transition-all flex items-center gap-2 shadow-lg"
+              title="Create New Workspace"
             >
-              <Plus size={18} /> New Project
+              <Plus size={18} />
             </button>
         </div>
       </div>
 
-      {/* Creation Modal */}
       {isCreating && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-nexus-900 border border-nexus-700 w-full max-w-md rounded-2xl p-6 shadow-2xl animate-in zoom-in-95">
-            <h2 className="text-xl font-bold text-white mb-4">Start New Draft</h2>
-            <form onSubmit={handleCreate} className="space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-[#0a0a0a] border border-white/5 w-full max-w-md rounded-[32px] p-8 shadow-3xl">
+            <h2 className="text-2xl font-black text-white mb-6">Create Workspace</h2>
+            <form onSubmit={handleCreate} className="space-y-5">
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Project Name</label>
-                <input 
-                  autoFocus
-                  type="text" 
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="e.g. Lead Generation Bot"
-                  className="w-full bg-nexus-950 border border-nexus-800 rounded-lg p-3 text-white focus:border-nexus-accent outline-none"
-                />
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1">Title</label>
+                <input autoFocus value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="e.g. Content Automation" className="w-full bg-[#050505] border border-white/10 rounded-2xl p-4 text-white focus:border-nexus-accent outline-none font-bold" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Description (Optional)</label>
-                <textarea 
-                  value={newDesc}
-                  onChange={(e) => setNewDesc(e.target.value)}
-                  placeholder="Short description..."
-                  className="w-full bg-nexus-950 border border-nexus-800 rounded-lg p-3 text-white h-20 resize-none focus:border-nexus-accent outline-none"
-                />
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1">Purpose</label>
+                <textarea value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="What does this do?" className="w-full bg-[#050505] border border-white/10 rounded-2xl p-4 text-white h-24 resize-none focus:border-nexus-accent outline-none text-sm" />
               </div>
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setIsCreating(false)} className="flex-1 py-3 bg-nexus-800 text-gray-400 rounded-lg font-bold hover:text-white">Cancel</button>
-                <button type="submit" disabled={!newTitle.trim()} className="flex-1 py-3 bg-nexus-accent text-black rounded-lg font-bold disabled:opacity-50">Create Draft</button>
+              <div className="flex gap-3 pt-4">
+                <button type="button" onClick={() => setIsCreating(false)} className="flex-1 py-4 bg-nexus-900 text-gray-400 rounded-2xl font-bold hover:text-white transition-all">Cancel</button>
+                <button type="submit" disabled={!newTitle.trim()} className="flex-1 py-4 bg-nexus-accent text-black rounded-2xl font-black disabled:opacity-50 shadow-lg">Start Building</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Tabs & Search */}
       <div className="flex flex-col md:flex-row gap-4 mb-8">
-        <div className="flex bg-nexus-900 p-1 rounded-xl border border-nexus-800 self-start">
+        <div className="flex bg-nexus-900 p-1 rounded-xl border border-white/5 self-start">
           {(['ALL', 'DRAFT', 'IN_PROGRESS', 'COMPLETED'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === tab ? 'bg-nexus-800 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
-            >
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${activeTab === tab ? 'bg-nexus-800 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}>
               {tab.replace('_', ' ')}
             </button>
           ))}
         </div>
         <div className="relative flex-1 max-w-md ml-auto">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-          <input 
-            type="text" 
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search projects..."
-            className="w-full bg-nexus-900 border border-nexus-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:border-nexus-700 outline-none"
-          />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-700" size={16} />
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search workspaces..." className="w-full bg-nexus-900 border border-white/5 rounded-2xl pl-12 pr-4 py-3 text-sm text-white focus:border-nexus-accent outline-none font-medium" />
         </div>
       </div>
 
-      {/* Projects Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {filteredProjects.map(project => (
-          <div 
-            key={project.id} 
-            onClick={() => onOpenProject(project)}
-            className="group relative bg-nexus-900/50 hover:bg-nexus-900 border border-nexus-800 hover:border-nexus-700 rounded-2xl p-5 cursor-pointer transition-all hover:translate-y-[-4px] flex flex-col h-[200px]"
-          >
-            <div className="flex justify-between items-start mb-3">
+          <div key={project.id} onClick={() => onOpenProject(project)} className="group bg-[#0a0a0a] border border-white/5 hover:border-nexus-accent/30 rounded-[24px] p-6 cursor-pointer transition-all hover:-translate-y-1 flex flex-col h-[240px] shadow-xl relative overflow-hidden">
+            <div className="flex justify-between items-start mb-4 relative z-10">
               {getStatusBadge(project.status)}
-              <button 
-                onClick={(e) => { e.stopPropagation(); onDeleteProject(project.id); }}
-                className="text-nexus-800 group-hover:text-red-500 transition-colors p-1"
-                title="Delete Project"
-              >
-                <Trash2 size={14} />
-              </button>
+              <button onClick={(e) => { e.stopPropagation(); onDeleteProject(project.id); }} className="text-gray-700 hover:text-red-500 p-1 transition-colors"><Trash2 size={14} /></button>
             </div>
-
-            <h3 className="font-bold text-white text-lg mb-1 truncate" title={project.title}>{project.title}</h3>
-            <p className="text-gray-500 text-xs line-clamp-2 h-8 mb-4">
-              {project.description || "No description provided."}
-            </p>
-
-            <div className="mt-auto pt-3 border-t border-nexus-800 flex items-center justify-between text-[10px] text-gray-600">
-               <div className="flex items-center gap-1.5" title={`Created: ${new Date(project.createdAt).toLocaleDateString()}`}>
-                 <Clock size={12} />
-                 {project.status === 'COMPLETED' ? 'Completed' : 'Updated'} {formatTimeAgo(project.updatedAt)}
+            <h3 className="font-bold text-white text-lg mb-2 truncate group-hover:text-nexus-accent transition-colors relative z-10">{project.title}</h3>
+            <p className="text-gray-500 text-xs line-clamp-3 mb-4 leading-relaxed relative z-10">{project.description || "System workflow operational."}</p>
+            <div className="mt-auto pt-4 border-t border-white/5 flex items-center justify-between relative z-10">
+               <div className="flex items-center gap-1.5 text-[9px] text-gray-600 font-bold uppercase tracking-widest">
+                 <Clock size={12} /> {new Date(project.updatedAt).toLocaleDateString()}
                </div>
-               <button className="flex items-center gap-1 text-nexus-accent opacity-0 group-hover:opacity-100 transition-opacity font-bold">
-                 Edit <Edit2 size={10} />
-               </button>
+               <div className="p-2 bg-nexus-900 rounded-lg group-hover:bg-nexus-accent group-hover:text-black transition-all">
+                  <PlayCircle size={16} />
+               </div>
             </div>
+            {/* Subtle card glow */}
+            <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-nexus-accent/5 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
           </div>
         ))}
-
-        {filteredProjects.length === 0 && (
-          <div className="col-span-full py-20 text-center border-2 border-dashed border-nexus-800 rounded-2xl bg-nexus-900/20">
-            <div className="w-16 h-16 bg-nexus-900 rounded-full flex items-center justify-center mx-auto mb-4">
-              <FileText size={24} className="text-gray-600" />
-            </div>
-            <h3 className="text-gray-300 font-bold mb-1">No projects found</h3>
-            <p className="text-gray-600 text-sm">Create a new draft to get started.</p>
-          </div>
-        )}
       </div>
     </div>
   );

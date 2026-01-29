@@ -1,7 +1,6 @@
-
 {
   "hosting": {
-    "public": "public",
+    "public": "dist",
     "ignore": [
       "firebase.json",
       "**/.*",
@@ -10,10 +9,18 @@
     "rewrites": [
       {
         "source": "**",
-        "run": {
-          "serviceId": "nexusstream",
-          "region": "us-west1"
-        }
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(js|css|png|jpg|jpeg|gif|webp|svg|woff|woff2)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "max-age=31536000, immutable"
+          }
+        ]
       }
     ]
   }

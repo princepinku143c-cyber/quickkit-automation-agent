@@ -1,0 +1,9 @@
+{
+  "name": "NexusStream",
+  "description": "A next-generation, AI-powered automation workflow platform featuring a holographic visual interface, self-healing streams, and intelligent block synthesis.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera",
+    "geolocation"
+  ]
+}

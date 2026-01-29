@@ -9,18 +9,18 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
-// Service Worker Registration for PWA/APK Offline Support
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js')
-      .then(registration => {
-        console.log('NexusStream ServiceWorker registered: ', registration.scope);
-      })
-      .catch(err => {
-        console.log('NexusStream ServiceWorker registration failed: ', err);
-      });
-  });
-}
+// Service Worker Registration DISABLED to fix Auth/MIME type issues
+// if ('serviceWorker' in navigator) {
+//   window.addEventListener('load', () => {
+//     navigator.serviceWorker.register('/service-worker.js')
+//       .then(registration => {
+//         console.log('NexusStream ServiceWorker registered: ', registration.scope);
+//       })
+//       .catch(err => {
+//         console.log('NexusStream ServiceWorker registration failed: ', err);
+//       });
+//   });
+// }
 
 const root = ReactDOM.createRoot(rootElement);
 
