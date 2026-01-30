@@ -17,6 +17,7 @@ interface CanvasProps {
   onNexusUpdate: (id: string, updates: Partial<Nexus>) => void;
   onNodeAction?: (action: 'RUN' | 'DUPLICATE' | 'DELETE' | 'COPY_ID', nodeId: string) => void;
   onCanvasDrop?: (data: { x: number; y: number; sourceId: string; sourceHandle: string }) => void;
+  isScanning?: boolean;
 }
 
 // --- CONSTANTS ---
@@ -28,10 +29,8 @@ const PORT_GAP = 24;
 // --- UTILS ---
 const getBezierPath = (x1: number, y1: number, x2: number, y2: number) => {
     const dist = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-    // Dynamic curvature based on distance
     const curvature = Math.min(dist * 0.5, 150); 
     
-    // If target is behind source, loop around nicely
     if (x2 < x1) {
         return `M ${x1} ${y1} C ${x1 + 150} ${y1} ${x2 - 150} ${y2} ${x2} ${y2}`;
     }
@@ -45,12 +44,9 @@ const Wire = memo(({ synapse, sourceNode, targetNode, onDelete }: { synapse: Syn
     const outputs = sourceNode.subtype === NexusSubtype.CONDITION ? ['true', 'false'] : (sourceNode.outputs || ['default']);
     const handleIdx = Math.max(0, outputs.indexOf(synapse.sourceHandle || 'default'));
 
-    // Precise Port Calculation
-    // Source: Right side, adjusted for multi-output index
     const startX = sourceNode.position.x + NODE_WIDTH;
-    const startY = sourceNode.position.y + HEADER_HEIGHT + PORT_OFFSET_TOP + (handleIdx * 24) - 12; // -12 centers it on the dot row (24px height)
+    const startY = sourceNode.position.y + HEADER_HEIGHT + PORT_OFFSET_TOP + (handleIdx * 24) - 12;
     
-    // Target: Left side, single input
     const endX = targetNode.position.x;
     const endY = targetNode.position.y + HEADER_HEIGHT + PORT_OFFSET_TOP - 12;
 
@@ -60,6 +56,7 @@ const Wire = memo(({ synapse, sourceNode, targetNode, onDelete }: { synapse: Syn
 
     const isSuccess = synapse.sourceHandle === 'true';
     const isFailure = synapse.sourceHandle === 'false';
+    const isNodeRunning = sourceNode.status === 'running';
     
     let strokeColor = '#525252'; 
     if (isSuccess) strokeColor = '#00ff9d';
@@ -69,11 +66,21 @@ const Wire = memo(({ synapse, sourceNode, targetNode, onDelete }: { synapse: Syn
     return (
         <g className="group wire-group">
             <path d={pathString} stroke="transparent" strokeWidth="24" fill="none" className="cursor-pointer" onDoubleClick={(e) => { e.stopPropagation(); onDelete(synapse.id); }} />
-            <path d={pathString} stroke={strokeColor} strokeWidth="6" strokeOpacity="0" fill="none" className="transition-all duration-300 group-hover:stroke-opacity-20 blur-sm pointer-events-none" />
-            <path d={pathString} stroke={strokeColor} strokeWidth="2" fill="none" className="pointer-events-none" />
-            <circle r="2" fill={strokeColor} className="pointer-events-none">
-                <animateMotion dur={isSuccess || isFailure ? "1.5s" : "3s"} repeatCount="indefinite" path={pathString} calcMode="linear" keyPoints="0;1" keyTimes="0;1" />
+            <path d={pathString} stroke={strokeColor} strokeWidth="6" strokeOpacity="0" fill="none" className="transition-all duration-300 group-hover:stroke-opacity-20 blur-sm pointer-events-none hologram-line" style={{ color: strokeColor }} />
+            <path d={pathString} stroke={strokeColor} strokeWidth="2" strokeOpacity={isNodeRunning ? 1 : 0.4} fill="none" className="pointer-events-none" />
+            
+            {/* DATA FLOW PARTICLES */}
+            <circle r="2.5" fill={strokeColor} className="pointer-events-none">
+                <animateMotion dur={isNodeRunning ? "1.2s" : "3s"} repeatCount="indefinite" path={pathString} calcMode="linear" keyPoints="0;1" keyTimes="0;1" />
+                <animate attributeName="opacity" values="0;1;0" dur={isNodeRunning ? "1.2s" : "3s"} repeatCount="indefinite" />
             </circle>
+            
+            {isNodeRunning && (
+                <circle r="4" fill={strokeColor} className="pointer-events-none blur-[2px]">
+                    <animateMotion dur="0.8s" repeatCount="indefinite" path={pathString} calcMode="linear" />
+                </circle>
+            )}
+
             <foreignObject x={midX - 10} y={midY - 10} width="20" height="20" className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none group-hover:pointer-events-auto">
                 <button onClick={(e) => { e.stopPropagation(); onDelete(synapse.id); }} className="w-5 h-5 bg-[#09090b] border border-red-500 rounded-full flex items-center justify-center hover:bg-red-500 text-red-500 hover:text-white transition-colors cursor-pointer shadow-lg">
                     <X size={10} />
@@ -86,9 +93,9 @@ const Wire = memo(({ synapse, sourceNode, targetNode, onDelete }: { synapse: Syn
 // --- MAIN CANVAS ---
 const Canvas: React.FC<CanvasProps> = ({
   nexuses, synapses, selectedId, onSelectNexus, onUpdateNexusPosition, 
-  onAddSynapse, onDeleteSynapse, onOpenProperties, onNexusUpdate, onNodeAction
+  onAddSynapse, onDeleteSynapse, onOpenProperties, onNexusUpdate, onNodeAction,
+  isScanning = false
 }) => {
-  // Interaction State
   const [draggingNode, setDraggingNode] = useState<{ id: string, startX: number, startY: number, initialX: number, initialY: number } | null>(null);
   const [connecting, setConnecting] = useState<{ id: string, handle: string, startX: number, startY: number } | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
@@ -96,14 +103,12 @@ const Canvas: React.FC<CanvasProps> = ({
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, nodeId: string } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
-  // Get mouse pos relative to canvas
   const getRelativePos = useCallback((clientX: number, clientY: number) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
     return { x: clientX - rect.left, y: clientY - rect.top };
   }, []);
 
-  // --- MOUSE MOVE HANDLER (The Engine) ---
   useEffect(() => {
     const handleMove = (e: MouseEvent) => {
         if (!canvasRef.current) return;
@@ -111,15 +116,12 @@ const Canvas: React.FC<CanvasProps> = ({
         setMousePos(pos);
 
         if (draggingNode) {
-            // Calculate delta and apply to initial position
-            // This prevents the "jump to top-left" bug
             const dx = pos.x - draggingNode.startX;
             const dy = pos.y - draggingNode.startY;
             
             let newX = draggingNode.initialX + dx;
             let newY = draggingNode.initialY + dy;
 
-            // Snap to Grid (10px)
             newX = Math.round(newX / 10) * 10;
             newY = Math.round(newY / 10) * 10;
 
@@ -140,10 +142,7 @@ const Canvas: React.FC<CanvasProps> = ({
     };
   }, [draggingNode, connecting, getRelativePos, onUpdateNexusPosition]);
 
-  // --- HANDLERS ---
-
   const handleNodeDragStart = (e: React.MouseEvent, id: string) => {
-      // Find current node position
       const node = nexuses.find(n => n.id === id);
       if (!node) return;
       
@@ -164,7 +163,6 @@ const Canvas: React.FC<CanvasProps> = ({
       const outputs = node.subtype === NexusSubtype.CONDITION ? ['true', 'false'] : (node.outputs || ['default']);
       const handleIdx = Math.max(0, outputs.indexOf(handle));
       
-      // Calculate precise start based on node position + port offset
       const startX = node.position.x + NODE_WIDTH;
       const startY = node.position.y + HEADER_HEIGHT + PORT_OFFSET_TOP + (handleIdx * 24) - 12;
 
@@ -188,6 +186,8 @@ const Canvas: React.FC<CanvasProps> = ({
           backgroundSize: '20px 20px'
       }}
     >
+      {/* Holographic Scanning Effect */}
+      {isScanning && <div className="canvas-scan animate-scan" />}
       
       {/* SVG LAYER (WIRES) */}
       <svg className="absolute inset-0 w-full h-full pointer-events-none z-0 overflow-visible">
@@ -212,8 +212,8 @@ const Canvas: React.FC<CanvasProps> = ({
                     strokeDasharray="5,5"
                     className="animate-pulse opacity-80"
                 />
-                <circle cx={connecting.startX} cy={connecting.startY} r="3" fill="#FFD700" />
-                <circle cx={mousePos.x} cy={mousePos.y} r="3" fill="#FFD700" />
+                <circle cx={connecting.startX} cy={connecting.startY} r="4" fill="#FFD700" className="blur-[1px]" />
+                <circle cx={mousePos.x} cy={mousePos.y} r="4" fill="#FFD700" className="blur-[1px]" />
             </>
         )}
       </svg>

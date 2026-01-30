@@ -34,7 +34,7 @@ export const createProject = async (projectData: { title: string; description?: 
     const newProjectData: any = {
         userId: uid,
         title: projectData.title,
-        description: projectData.description || '',
+        description: projectData.description || 'New automated workflow.',
         status: 'DRAFT', 
         nexuses: [],   
         synapses: [],
@@ -44,7 +44,7 @@ export const createProject = async (projectData: { title: string; description?: 
         lastSavedAt: now
     };
 
-    // Try Cloud if possible, fallback to Virtual DB for Guests
+    // Try Cloud if possible
     if (db && auth?.currentUser && !auth.currentUser.isAnonymous) {
         try {
             const docRef = await db.collection(COLLECTION_NAME).add(newProjectData);
@@ -54,7 +54,7 @@ export const createProject = async (projectData: { title: string; description?: 
         }
     }
 
-    // VIRTUAL DB PERSISTENCE (Guest Mode)
+    // VIRTUAL DB PERSISTENCE (Guest Mode or Cloud Error Fallback)
     const localId = `local_${Date.now()}`;
     const fullProject = { id: localId, ...newProjectData } as Project;
     const dbData = getLocalDb();
@@ -72,8 +72,14 @@ export const subscribeToProjects = (userId: string, callback: (projects: Project
             .where("userId", "==", uid)
             .onSnapshot((snapshot) => {
                 const projects = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Project[];
-                projects.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-                callback(projects);
+                // Add local-only projects if any were created during offline session
+                const localData = getLocalDb().filter(p => p.userId === uid);
+                const combined = [...projects, ...localData.filter(lp => !projects.find(rp => rp.id === lp.id))];
+                combined.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+                callback(combined);
+            }, (err) => {
+                console.error("Cloud sub failed, falling back to local.");
+                callback(getLocalDb().filter(p => p.userId === uid));
             });
     }
 
@@ -84,7 +90,7 @@ export const subscribeToProjects = (userId: string, callback: (projects: Project
     };
     
     sync(); // Initial Load
-    const interval = setInterval(sync, 1500); 
+    const interval = setInterval(sync, 2000); 
     return () => clearInterval(interval);
 };
 
@@ -105,6 +111,7 @@ export const getUserProjects = async (userId: string): Promise<Project[]> => {
 
 export const updateProject = async (id: string, updates: Partial<Project>) => {
     const uid = getStorageUid();
+    const now = Date.now();
     
     // Cloud Update
     if (db && !id.startsWith('local_')) {
@@ -112,22 +119,22 @@ export const updateProject = async (id: string, updates: Partial<Project>) => {
             const { id: _, ...safeUpdates } = updates as any;
             await db.collection(COLLECTION_NAME).doc(id).update({
                 ...safeUpdates,
-                updatedAt: Date.now(),
-                lastSavedAt: Date.now()
+                updatedAt: now,
+                lastSavedAt: now
             });
             return;
         } catch (e) { console.error("Cloud update failed, syncing local..."); }
     }
 
-    // Virtual DB Update (Guest)
+    // Virtual DB Update (Guest or Fallback)
     const dbData = getLocalDb();
     const idx = dbData.findIndex(p => p.id === id);
     if (idx !== -1) {
         dbData[idx] = { 
             ...dbData[idx], 
             ...updates, 
-            updatedAt: Date.now(), 
-            lastSavedAt: Date.now() 
+            updatedAt: now, 
+            lastSavedAt: now 
         };
         saveLocalDb(dbData);
     }

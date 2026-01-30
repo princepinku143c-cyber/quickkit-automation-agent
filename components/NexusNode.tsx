@@ -2,7 +2,7 @@
 import React, { useState, memo, useEffect } from 'react';
 import { Nexus, NexusSubtype, NexusType } from '../types';
 import { NEXUS_DEFINITIONS } from '../constants';
-import { Settings, ChevronDown, ChevronRight, Database, Link as LinkIcon } from 'lucide-react';
+import { Settings, ChevronDown, ChevronRight, Database, Link as LinkIcon, Activity } from 'lucide-react';
 import JsonTree from './JsonTree'; 
 
 interface NexusNodeProps {
@@ -28,16 +28,15 @@ const NexusNode: React.FC<NexusNodeProps> = memo(({
   const def = NEXUS_DEFINITIONS.find(d => d.subtype === nexus.subtype) || NEXUS_DEFINITIONS[0];
   const Icon = def.icon;
   const isTrigger = nexus.type === NexusType.TRIGGER;
+  const isActive = nexus.status === 'running';
 
-  // Check if any config value contains a variable interpolation {{...}}
   const hasDynamicData = Object.values(nexus.config).some(val => typeof val === 'string' && val.includes('{{') && val.includes('}}'));
 
-  // --- AESTHETIC ENGINE ---
   const getStyles = () => {
-      if (nexus.type === NexusType.TRIGGER) return { accent: 'text-nexus-wire', border: 'border-nexus-wire/30', bg: 'bg-yellow-950/10', ring: 'ring-nexus-wire/50', socket: 'border-nexus-wire' };
-      if (nexus.subtype.includes('AI') || nexus.subtype === 'AGENT') return { accent: 'text-nexus-accent', border: 'border-nexus-accent/30', bg: 'bg-emerald-950/10', ring: 'ring-nexus-accent/50', socket: 'border-nexus-accent' };
-      if (nexus.type === NexusType.LOGIC) return { accent: 'text-purple-400', border: 'border-purple-500/30', bg: 'bg-purple-950/10', ring: 'ring-purple-500/50', socket: 'border-purple-500' };
-      return { accent: 'text-blue-400', border: 'border-blue-500/30', bg: 'bg-blue-950/10', ring: 'ring-blue-500/50', socket: 'border-blue-500' };
+      if (nexus.type === NexusType.TRIGGER) return { accent: 'text-nexus-wire', border: 'border-nexus-wire/30', bg: 'bg-yellow-950/20', ring: 'ring-nexus-wire/50', socket: 'border-nexus-wire' };
+      if (nexus.subtype.includes('AI') || nexus.subtype === 'AGENT') return { accent: 'text-nexus-accent', border: 'border-nexus-accent/30', bg: 'bg-emerald-950/20', ring: 'ring-nexus-accent/50', socket: 'border-nexus-accent' };
+      if (nexus.type === NexusType.LOGIC) return { accent: 'text-purple-400', border: 'border-purple-500/30', bg: 'bg-purple-950/20', ring: 'ring-purple-500/50', socket: 'border-purple-500' };
+      return { accent: 'text-blue-400', border: 'border-blue-500/30', bg: 'bg-blue-950/20', ring: 'ring-blue-500/50', socket: 'border-blue-500' };
   };
 
   const styles = getStyles();
@@ -55,21 +54,24 @@ const NexusNode: React.FC<NexusNodeProps> = memo(({
   
   return (
     <div
-      className="absolute group select-none transition-transform will-change-transform z-10"
+      className={`absolute group select-none transition-transform will-change-transform z-10 ${isActive ? 'animate-float' : ''}`}
       style={{ transform: `translate3d(${x}px, ${y}px, 0)`, width: '260px' }}
       onMouseDown={(e) => { e.stopPropagation(); onSelect(nexus.id); }}
       onContextMenu={(e) => onContextMenu(e, nexus.id)} 
     >
         {/* --- NODE CHASSIS --- */}
         <div className={`
-            relative flex flex-col rounded-xl overflow-hidden transition-all duration-200
-            bg-[#09090b] shadow-xl
-            ${isSelected ? `ring-1 ${styles.ring} shadow-[0_0_30px_-10px_rgba(0,0,0,0.5)]` : 'ring-1 ring-white/10 hover:ring-white/20'}
+            relative flex flex-col rounded-xl overflow-hidden transition-all duration-300
+            bg-[#09090b]/90 backdrop-blur-md shadow-2xl border
+            ${isActive ? 'border-nexus-accent node-active scale-[1.02]' : isSelected ? `border-nexus-accent/50 ring-1 ${styles.ring}` : 'border-white/10 hover:border-white/20'}
         `}>
             
-            {/* --- HEADER (DRAG HANDLE) --- */}
+            {/* Holographic Header Scanline */}
+            {isActive && <div className="absolute top-0 left-0 w-full h-0.5 bg-nexus-accent shadow-[0_0_10px_#00ff9d] animate-pulse z-20" />}
+
+            {/* --- HEADER --- */}
             <div 
-                className="h-10 flex items-center justify-between px-3 border-b border-white/5 cursor-grab active:cursor-grabbing bg-white/[0.02] relative group/header"
+                className="h-10 flex items-center justify-between px-3 border-b border-white/5 cursor-grab active:cursor-grabbing bg-white/[0.03] relative group/header"
                 onMouseDown={(e) => { 
                     e.stopPropagation(); 
                     e.preventDefault(); 
@@ -77,59 +79,58 @@ const NexusNode: React.FC<NexusNodeProps> = memo(({
                 }}
             >
                 <div className="flex items-center gap-2.5 z-10 w-full pointer-events-none">
-                    <div className={`w-6 h-6 rounded flex items-center justify-center ${styles.bg}`}>
-                        <Icon size={14} className={styles.accent} strokeWidth={2.5} />
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${isActive ? 'bg-nexus-accent text-black' : styles.bg}`}>
+                        {isActive ? <Activity size={16} className="animate-spin-slow" /> : <Icon size={14} className={styles.accent} strokeWidth={2.5} />}
                     </div>
                     <div className="flex-1 min-w-0 flex items-center gap-2">
-                        <span className="text-[9px] font-mono text-gray-500 uppercase tracking-wide">
+                        <span className={`text-[10px] font-mono uppercase tracking-widest ${isActive ? 'text-nexus-accent' : 'text-gray-400'}`}>
                             {def.subtype.replace('_', ' ')}
                         </span>
-                        {/* Auto-Wired Badge */}
                         {hasDynamicData && (
-                            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-900/30 rounded border border-blue-500/20 text-[8px] text-blue-400 font-bold uppercase tracking-wider animate-in fade-in">
+                            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-900/40 rounded border border-blue-500/30 text-[8px] text-blue-400 font-bold uppercase tracking-wider animate-in fade-in">
                                 <LinkIcon size={8} /> Linked
                             </div>
                         )}
                     </div>
                     {/* Status LED */}
-                    <div className={`w-1.5 h-1.5 rounded-full ${nexus.status === 'running' ? 'bg-nexus-accent animate-ping' : nexus.status === 'error' ? 'bg-red-500' : nexus.status === 'success' ? 'bg-nexus-success' : 'bg-gray-700'}`} />
+                    <div className={`w-2 h-2 rounded-full shadow-[0_0_8px] ${nexus.status === 'running' ? 'bg-nexus-accent animate-pulse-fast shadow-nexus-accent' : nexus.status === 'error' ? 'bg-red-500 shadow-red-500' : nexus.status === 'success' ? 'bg-nexus-success shadow-nexus-success' : 'bg-gray-700 shadow-transparent'}`} />
                 </div>
             </div>
 
             {/* --- BODY --- */}
-            <div className="p-3 bg-[#09090b]">
+            <div className="p-4 bg-gradient-to-b from-transparent to-black/20">
                 <div onDoubleClick={(e) => { e.stopPropagation(); setIsEditing(true); }} className="mb-2">
                     {isEditing ? (
                         <input 
                             value={editLabel} onChange={(e) => setEditLabel(e.target.value)}
                             onBlur={handleRenameSubmit} onKeyDown={e => e.key === 'Enter' && handleRenameSubmit()}
-                            className="bg-black/50 border border-nexus-accent/50 rounded px-2 py-1 text-xs font-medium text-white outline-none w-full" autoFocus
+                            className="bg-black/80 border-2 border-nexus-accent rounded-lg px-3 py-1.5 text-sm font-bold text-white outline-none w-full shadow-inner" autoFocus
                         />
                     ) : (
-                        <div className="text-xs font-medium text-gray-200 truncate tracking-tight hover:text-white transition-colors cursor-text">
+                        <div className="text-sm font-bold text-gray-100 truncate tracking-tight hover:text-white transition-colors cursor-text">
                             {nexus.label}
                         </div>
                     )}
                 </div>
 
                 <div className="flex justify-between items-center group/id">
-                    <span className="text-[9px] font-mono text-gray-600 select-all">#{nexus.id.slice(-4)}</span>
-                    <button onClick={(e) => { e.stopPropagation(); onOpenProperties(nexus.id); }} className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-gray-500 hover:text-white">
-                        <Settings size={12}/>
+                    <span className="text-[10px] font-mono text-gray-600 select-all tracking-wider opacity-60 group-hover/id:opacity-100 transition-opacity">ID: {nexus.id.slice(-6)}</span>
+                    <button onClick={(e) => { e.stopPropagation(); onOpenProperties(nexus.id); }} className="p-1.5 bg-white/5 rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition-all opacity-0 group-hover:opacity-100">
+                        <Settings size={14}/>
                     </button>
                 </div>
 
                 {nexus.lastOutput && (
-                    <div className="mt-3 pt-2 border-t border-white/5">
+                    <div className="mt-4 pt-3 border-t border-white/5">
                         <button 
                             onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
-                            className="w-full flex items-center justify-between text-[9px] font-bold text-gray-500 hover:text-nexus-accent transition-all"
+                            className={`w-full flex items-center justify-between text-[10px] font-black uppercase tracking-widest transition-all ${isActive ? 'text-nexus-accent' : 'text-gray-500 hover:text-nexus-accent'}`}
                         >
-                            <span className="flex items-center gap-1.5"><Database size={10}/> PAYLOAD</span>
-                            {isExpanded ? <ChevronDown size={10}/> : <ChevronRight size={10}/>}
+                            <span className="flex items-center gap-2"><Database size={12}/> DATA_PAYLOAD</span>
+                            {isExpanded ? <ChevronDown size={12}/> : <ChevronRight size={12}/>}
                         </button>
                         {isExpanded && (
-                            <div className="mt-2 bg-black/50 rounded border border-white/5 p-2 max-h-32 overflow-y-auto custom-scrollbar">
+                            <div className="mt-2 bg-black/60 backdrop-blur-sm rounded-lg border border-white/5 p-3 max-h-40 overflow-y-auto custom-scrollbar animate-in slide-in-from-top-1">
                                 <JsonTree data={nexus.lastOutput} />
                             </div>
                         )}
@@ -138,10 +139,10 @@ const NexusNode: React.FC<NexusNodeProps> = memo(({
             </div>
         </div>
 
-        {/* --- INPUT PORT (TARGET) --- */}
+        {/* --- INPUT PORT --- */}
         {!isTrigger && (
              <div 
-                className="absolute -left-[6px] top-[15px] z-50 w-4 h-4 flex items-center justify-center cursor-crosshair group/port"
+                className="absolute -left-[8px] top-[14px] z-50 w-5 h-5 flex items-center justify-center cursor-crosshair group/port"
                 onMouseUp={(e) => { 
                     e.stopPropagation(); 
                     e.preventDefault();
@@ -149,48 +150,49 @@ const NexusNode: React.FC<NexusNodeProps> = memo(({
                 }}
              >
                  <div className={`
-                    w-2.5 h-2.5 rounded-full bg-[#09090b] border border-gray-600 transition-all 
-                    group-hover/port:border-white group-hover/port:scale-125
-                    ${isConnecting ? 'ring-2 ring-white/50 bg-white scale-110 animate-pulse' : ''}
+                    w-3 h-3 rounded-full bg-[#050505] border-2 transition-all 
+                    ${isConnecting ? 'border-nexus-accent ring-4 ring-nexus-accent/20 bg-nexus-accent scale-125' : 'border-gray-600 group-hover/port:border-white group-hover/port:scale-125'}
                  `}>
-                    <div className="w-1 h-1 rounded-full bg-gray-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-gray-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
                  </div>
                  
-                 <div className="absolute left-4 top-1/2 -translate-y-1/2 opacity-0 group-hover/port:opacity-100 transition-all bg-black border border-white/10 text-[9px] text-white px-2 py-1 rounded whitespace-nowrap pointer-events-none z-50">
-                     Input
+                 <div className="absolute left-6 top-1/2 -translate-y-1/2 opacity-0 group-hover/port:opacity-100 transition-all bg-nexus-900 border border-white/10 text-[9px] font-black uppercase tracking-widest text-white px-2.5 py-1.5 rounded-lg whitespace-nowrap pointer-events-none z-50 shadow-2xl">
+                     INP_GATE
                  </div>
              </div>
         )}
 
-        {/* --- OUTPUT PORTS (SOURCE) --- */}
-        <div className="absolute -right-[6px] top-[15px] flex flex-col gap-[24px] z-50">
+        {/* --- OUTPUT PORTS --- */}
+        <div className="absolute -right-[8px] top-[14px] flex flex-col gap-[24px] z-50">
             {outputs.map((output, idx) => (
-                <div key={output} className="relative flex items-center justify-center w-4 h-4">
-                     {/* Label for Conditional */}
+                <div key={output} className="relative flex items-center justify-center w-5 h-5">
                      {nexus.subtype === NexusSubtype.CONDITION && (
-                         <span className={`absolute right-5 text-[9px] font-bold uppercase tracking-wider pointer-events-none ${output === 'true' ? 'text-nexus-success' : 'text-red-400'}`}>
+                         <span className={`absolute right-7 text-[10px] font-black uppercase tracking-[0.2em] pointer-events-none drop-shadow-md ${output === 'true' ? 'text-nexus-success' : 'text-red-400'}`}>
                              {output === 'true' ? 'YES' : 'NO'}
                          </span>
                      )}
 
                      <div 
                         className={`
-                            w-2.5 h-2.5 rounded-full bg-[#09090b] border flex items-center justify-center cursor-crosshair transition-all hover:scale-125
-                            ${output === 'true' ? 'border-nexus-success bg-nexus-success/10' : 
-                              output === 'false' ? 'border-red-500 bg-red-500/10' : 
+                            w-3 h-3 rounded-full bg-[#050505] border-2 flex items-center justify-center cursor-crosshair transition-all hover:scale-150
+                            ${output === 'true' ? 'border-nexus-success bg-nexus-success/10 hover:bg-nexus-success' : 
+                              output === 'false' ? 'border-red-500 bg-red-500/10 hover:bg-red-500' : 
                               `${styles.socket} hover:bg-white hover:border-white`}
                         `}
                         onMouseDown={(e) => { 
                             e.stopPropagation(); 
                             e.preventDefault();
-                            // Calculate exact center of this port
                             const rect = e.currentTarget.getBoundingClientRect();
                             const centerX = rect.left + rect.width / 2;
                             const centerY = rect.top + rect.height / 2;
                             onConnectStart(e, nexus.id, output, centerX, centerY); 
                         }}
                      >
-                        <div className={`w-1 h-1 rounded-full ${output === 'true' ? 'bg-nexus-success' : output === 'false' ? 'bg-red-500' : 'bg-gray-400'}`} />
+                        <div className={`w-1.5 h-1.5 rounded-full ${output === 'true' ? 'bg-nexus-success' : output === 'false' ? 'bg-red-500' : 'bg-gray-400'}`} />
+                     </div>
+                     
+                     <div className="absolute right-7 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all bg-nexus-900 border border-white/10 text-[9px] font-black uppercase tracking-widest text-white px-2.5 py-1.5 rounded-lg whitespace-nowrap pointer-events-none z-50 shadow-2xl">
+                         OUT_{output.toUpperCase()}
                      </div>
                 </div>
             ))}

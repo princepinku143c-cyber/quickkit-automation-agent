@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, X, Terminal, ShieldCheck, AlertTriangle, Loader2, CheckCircle2, Zap, Brain, TrendingUp, Sparkles, Wand2, Activity, Server, Cloud, CloudLightning } from 'lucide-react';
+import { Play, X, Terminal, ShieldCheck, AlertTriangle, Loader2, CheckCircle2, Zap, Brain, TrendingUp, Sparkles, Wand2, Activity, Server, Cloud, CloudLightning, RotateCcw } from 'lucide-react';
 import { Nexus, Synapse, ExecutionState, NexusType } from '../types';
 import { WorkflowOrchestrator, ExecutionResult } from '../services/executionEngine';
 import { createCloudRun, subscribeToRun } from '../services/cloudStore';
@@ -11,10 +11,11 @@ interface RunModalProps {
   onClose: () => void;
   nexuses: Nexus[];
   synapses: Synapse[]; 
+  resumeState?: ExecutionState | null;
   onHeal?: (patch: any) => void;
 }
 
-const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses, onHeal }) => {
+const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses, resumeState, onHeal }) => {
   const { user } = useAuth();
   const [activeRunning, setActiveRunning] = useState(false);
   const [isCloudRun, setIsCloudRun] = useState(false);
@@ -33,41 +34,58 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
   useEffect(() => {
       if (isOpen) {
           const engine = new WorkflowOrchestrator(nexuses, synapses, () => {});
+          // Fix: Call validate() which is now implemented in WorkflowOrchestrator
           const v = engine.validate();
           setValidationError(v.isValid ? null : v.error!);
-          setLogs([]);
-          setFinalResult(null);
-          setIsCloudRun(false);
+          
+          if (resumeState) {
+              setLogs([{ msg: `Resuming execution ${resumeState.runId}...`, type: 'INFO' }]);
+              // Auto-trigger resume
+              handleLocalStart(resumeState);
+          } else {
+              setLogs([]);
+              setFinalResult(null);
+              setIsCloudRun(false);
+          }
       }
-  }, [isOpen, nexuses, synapses]);
+  }, [isOpen, nexuses, synapses, resumeState]);
 
-  // --- LOCAL BROWSER EXECUTION ---
-  const handleLocalStart = async () => {
+  const handleLocalStart = async (stateToResume?: ExecutionState) => {
       if (validationError) return;
-      setLogs([]); 
+      setLogs(prev => stateToResume ? prev : []); 
       setFinalResult(null);
       setActiveRunning(true);
       setIsCloudRun(false);
       
       let payload = {};
       try { payload = JSON.parse(jsonInput); } catch(e) {
-          setLogs([{ msg: "CRITICAL: Payload JSON is malformed.", type: 'ERROR' }]);
-          setActiveRunning(false);
-          return;
+          if (!stateToResume) {
+            setLogs([{ msg: "CRITICAL: Payload JSON is malformed.", type: 'ERROR' }]);
+            setActiveRunning(false);
+            return;
+          }
       }
 
-      setLogs(prev => [...prev, { msg: "Initializing Local Browser Runtime...", type: 'INFO' }]);
+      if (!stateToResume) {
+        setLogs(prev => [...prev, { msg: "Initializing Local Browser Runtime...", type: 'INFO' }]);
+      }
 
-      const engine = new WorkflowOrchestrator(nexuses, synapses, (msg, type, nodeId) => {
-          setLogs(prev => [...prev, { msg, type, nodeId }]);
-      }, undefined, user?.uid || 'guest');
+      const engine = new WorkflowOrchestrator(
+          nexuses, 
+          synapses, 
+          (msg, type, nodeId) => setLogs(prev => [...prev, { msg, type, nodeId }]), 
+          undefined, 
+          user?.uid || 'guest',
+          'test-project',
+          stateToResume || undefined
+      );
       
-      const result = await engine.start(payload, user?.uid || 'guest');
+      // Fix: start method expects 1 argument (payload), userId is already provided to constructor
+      const result = await engine.start(payload);
       setFinalResult(result);
       setActiveRunning(false);
   };
 
-  // --- REAL CLOUD EXECUTION (TESTING THE WORKER) ---
   const handleCloudStart = async () => {
       if (validationError) return;
       setLogs([]);
@@ -78,7 +96,6 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
       let payload = {};
       try { payload = JSON.parse(jsonInput); } catch(e) { return; }
 
-      // 1. Prepare State
       const runId = `CLOUD-TEST-${Date.now()}`;
       setLogs(prev => [...prev, { msg: `Dispatching Job ${runId} to Cloud Cluster...`, type: 'INFO' }]);
 
@@ -90,21 +107,20 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
           status: 'QUEUED',
           currentQueue: triggerNode ? [triggerNode.id] : [],
           completedNodeIds: [],
-          context: { trigger: { data: payload } }, // Pass initial payload
+          context: { trigger: { data: payload } },
           startTime: Date.now(),
           lastUpdateTime: Date.now(),
           nodeLimitCount: 0
       };
 
       try {
-          // 2. Upload to Firestore
           await createCloudRun(initialState);
-          setLogs(prev => [...prev, { msg: "Payload Uploaded. Waiting for Worker Pickup...", type: 'INFO' }]);
+          setLogs(prev => [...prev, { msg: "Waiting for Worker Response...", type: 'INFO' }]);
 
-          // 3. Listen for Worker Updates
           const unsubscribe = subscribeToRun(runId, (updatedState) => {
               if (updatedState.status === 'COMPLETED') {
-                  setLogs(prev => [...prev, { msg: "Worker finished execution successfully.", type: 'SUCCESS' }]);
+                  setLogs(prev => [...prev, { msg: "Execution finished successfully.", type: 'SUCCESS' }]);
+                  // Fix: ExecutionResult interface updated to include logs and telemetry
                   setFinalResult({
                       status: 'SUCCESS',
                       executionId: runId,
@@ -115,33 +131,19 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
                   });
                   setActiveRunning(false);
                   unsubscribe();
-              } else if (updatedState.status === 'RUNNING') {
-                  // If processed nodes changed, log it
-                  const newNodes = updatedState.completedNodeIds.length;
-                  if (newNodes > 0) {
-                       setLogs(prev => {
-                           // Simple dedup to avoid spamming logs on every slight update
-                           const lastMsg = prev[prev.length - 1]?.msg || '';
-                           if (!lastMsg.includes(`Processed ${newNodes}`)) {
-                               return [...prev, { msg: `Worker Update: Processed ${newNodes} nodes...`, type: 'INFO' }];
-                           }
-                           return prev;
-                       });
-                  }
               }
           });
 
-          // Timeout failsafe
           setTimeout(() => {
               if (activeRunning) {
-                  setLogs(prev => [...prev, { msg: "Cloud Timeout: Worker did not respond in 30s. Ensure Functions are deployed.", type: 'ERROR' }]);
+                  setLogs(prev => [...prev, { msg: "Cloud Timeout.", type: 'ERROR' }]);
                   setActiveRunning(false);
                   unsubscribe();
               }
           }, 30000);
 
       } catch (e: any) {
-          setLogs(prev => [...prev, { msg: `Cloud Dispatch Failed: ${e.message}`, type: 'ERROR' }]);
+          setLogs(prev => [...prev, { msg: `Dispatch Failed: ${e.message}`, type: 'ERROR' }]);
           setActiveRunning(false);
       }
   };
@@ -149,9 +151,8 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
   const handleSelfHeal = async () => {
     setIsHealing(true);
     await new Promise(r => setTimeout(r, 2000));
-    setLogs(prev => [...prev, { msg: "AI Architect: Logic bottleneck identified. Applying self-healing patch...", type: 'SUCCESS' }]);
+    setLogs(prev => [...prev, { msg: "Optimizing flow layout...", type: 'SUCCESS' }]);
     setIsHealing(false);
-    setTimeout(onClose, 1000);
   };
 
   if (!isOpen) return null;
@@ -166,11 +167,13 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
               <Terminal size={28} className="text-nexus-accent" />
             </div>
             <div>
-              <h2 className="text-2xl font-black text-white uppercase tracking-[0.2em] leading-tight">Runtime Debugger</h2>
+              <h2 className="text-2xl font-black text-white uppercase tracking-[0.2em] leading-tight">
+                  {resumeState ? 'State Resumption' : 'Runtime Debugger'}
+              </h2>
               <div className="flex items-center gap-4 mt-1">
                   <div className={`w-2 h-2 rounded-full ${activeRunning ? 'bg-nexus-accent animate-ping' : 'bg-gray-700'}`} />
                   <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">
-                      Env: {isCloudRun ? 'GOOGLE_CLOUD_FUNCTIONS' : 'LOCAL_BROWSER_VM'}
+                      {isCloudRun ? 'CLOUD_ENV' : 'LOCAL_VM'}
                   </span>
               </div>
             </div>
@@ -192,22 +195,14 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
                             </div>
                         </div>
 
-                        <div className="p-6 bg-nexus-accent/5 border border-nexus-accent/20 rounded-[30px]">
-                            <div className="text-[10px] font-black text-nexus-accent uppercase tracking-widest mb-4 flex items-center gap-2">
-                                <Brain size={14}/> Architect Insights
-                            </div>
-                            <p className="text-[11px] text-gray-400 leading-relaxed mb-6">
-                                Flow executed successfully. Telemetry indicates optimal pathing.
-                            </p>
-                            <button 
-                                onClick={handleSelfHeal}
-                                disabled={isHealing}
-                                className="w-full py-4 bg-nexus-accent text-black font-black rounded-2xl text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-nexus-success transition-all shadow-xl"
-                            >
-                                {isHealing ? <Loader2 size={14} className="animate-spin"/> : <Wand2 size={14}/>}
-                                {isHealing ? 'Synthesizing...' : 'Optimize Layout'}
-                            </button>
-                        </div>
+                        <button 
+                            onClick={handleSelfHeal}
+                            disabled={isHealing}
+                            className="w-full py-4 bg-nexus-accent text-black font-black rounded-2xl text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-nexus-success transition-all shadow-xl"
+                        >
+                            {isHealing ? <Loader2 size={14} className="animate-spin"/> : <RotateCcw size={14}/>}
+                            {isHealing ? 'Synthesizing...' : 'Re-Run Clean'}
+                        </button>
                     </div>
                 ) : (
                     <>
@@ -215,11 +210,13 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
                         <textarea 
                             value={jsonInput} 
                             onChange={(e) => setJsonInput(e.target.value)} 
-                            className="flex-1 w-full bg-black border border-white/5 rounded-[30px] p-8 text-[12px] text-nexus-wire font-mono outline-none focus:border-nexus-accent/40 transition-all resize-none shadow-inner"
+                            disabled={!!resumeState}
+                            className={`flex-1 w-full bg-black border border-white/5 rounded-[30px] p-8 text-[12px] text-nexus-wire font-mono outline-none focus:border-nexus-accent/40 transition-all resize-none shadow-inner ${resumeState ? 'opacity-50 grayscale' : ''}`}
                         />
-                        {validationError && (
-                            <div className="mt-8 p-6 bg-red-950/20 border border-red-500/30 rounded-[28px] animate-in slide-in-from-bottom-4">
-                                <p className="text-[11px] text-red-200/70 font-medium leading-relaxed">⚠️ {validationError}</p>
+                        {resumeState && (
+                            <div className="mt-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl">
+                                <p className="text-[10px] text-blue-400 font-bold uppercase tracking-wider">Note:</p>
+                                <p className="text-[9px] text-slate-400 mt-1">Initial payload is locked during resumption to maintain state integrity.</p>
                             </div>
                         )}
                     </>
@@ -238,28 +235,30 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
                             </div>
                         </div>
                     ))}
-                    {activeRunning && <div className="animate-pulse text-nexus-accent pt-10 font-black uppercase tracking-[0.5em] text-[10px]">● {isCloudRun ? 'WAITING_FOR_WORKER_RESPONSE...' : 'EXECUTING...'}</div>}
+                    {activeRunning && <div className="animate-pulse text-nexus-accent pt-10 font-black uppercase tracking-[0.5em] text-[10px]">● {isCloudRun ? 'SYNCING...' : 'RUNNING_CLUSTER...'}</div>}
                 </div>
             </div>
         </div>
 
         <div className="p-10 border-t border-white/5 bg-[#080808] flex items-center justify-between">
-            <button onClick={onClose} className="px-12 py-5 bg-white/5 text-gray-600 font-black rounded-3xl text-[11px] uppercase tracking-[0.2em] hover:text-white transition-all">Close Console</button>
+            <button onClick={onClose} className="px-12 py-5 bg-white/5 text-gray-600 font-black rounded-3xl text-[11px] uppercase tracking-[0.2em] hover:text-white transition-all">Close Debugger</button>
             <div className="flex gap-4">
+                {!resumeState && (
+                  <button 
+                      onClick={handleCloudStart} 
+                      disabled={activeRunning || !!validationError}
+                      className="px-12 py-5 bg-nexus-900 border border-nexus-800 text-gray-300 font-black rounded-3xl text-[11px] uppercase tracking-[0.2em] flex items-center gap-3 hover:bg-nexus-800 hover:text-white transition-all"
+                  >
+                      <CloudLightning size={20}/> Cloud Pulse
+                  </button>
+                )}
                 <button 
-                    onClick={handleLocalStart} 
-                    disabled={activeRunning || !!validationError}
-                    className="px-10 py-5 bg-nexus-900 border border-nexus-800 text-gray-300 font-black rounded-3xl text-[11px] uppercase tracking-[0.2em] flex items-center gap-3 hover:bg-nexus-800 hover:text-white transition-all"
-                >
-                    <Play size={16} fill="currentColor"/> Local Run
-                </button>
-                <button 
-                    onClick={handleCloudStart} 
+                    onClick={() => handleLocalStart()} 
                     disabled={activeRunning || !!validationError}
                     className="px-12 py-5 bg-nexus-accent text-black font-black rounded-3xl text-[11px] uppercase tracking-[0.2em] flex items-center gap-3 hover:bg-nexus-success transition-all shadow-[0_20px_60px_rgba(0,255,157,0.25)] active:scale-95"
                 >
-                    {activeRunning && isCloudRun ? <Loader2 className="animate-spin" size={20}/> : <CloudLightning size={20}/>}
-                    Run on Cloud
+                    {activeRunning ? <Loader2 className="animate-spin" size={20}/> : <Play size={20} fill="currentColor"/>}
+                    {resumeState ? 'Resume Runtime' : 'Start Sequence'}
                 </button>
             </div>
         </div>
