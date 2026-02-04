@@ -1,8 +1,9 @@
 
 import React, { useState } from 'react';
-import { Nexus, NexusSubtype, Credential } from '../types';
+import { Nexus, NexusSubtype, Credential, NodeSettings } from '../types';
+import { DEFAULT_NODE_SETTINGS } from '../constants';
 import { 
-  X, Trash2, Settings, Play, Sliders, Key, Loader2, ShieldAlert, RotateCcw, Clock, Zap
+  X, Trash2, Settings, Play, Sliders, Key, Loader2, ShieldAlert, RotateCcw, Clock, Zap, AlertTriangle, Info 
 } from 'lucide-react';
 import { SectionHeader, InputField, SelectField, ToggleField, TextAreaField } from './ConfigInputs';
 
@@ -33,20 +34,29 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ nexus, onClose, onUpd
   
   if (!nexus) return null;
   
-  const safeSubtype = nexus.subtype || NexusSubtype.HTTP_REQUEST;
+  // SAFEGUARDS
+  const safeSubtype = String(nexus.subtype || NexusSubtype.HTTP_REQUEST);
   const safeLabel = nexus.label || 'Untitled Node';
   const safeConfig = nexus.config || {};
+  const safeSettings = nexus.settings || DEFAULT_NODE_SETTINGS;
 
   const handleChange = (key: string, value: any) => {
     onUpdate(nexus.id, { config: { ...safeConfig, [key]: value } });
   };
 
+  const handleSettingsChange = (key: keyof NodeSettings, value: any) => {
+    onUpdate(nexus.id, { settings: { ...safeSettings, [key]: value } });
+  };
+
   const renderConfig = () => {
+      // Cast back to NexusSubtype for strict checks, though we use safeSubtype for display
+      const subtype = nexus.subtype as NexusSubtype;
+
       if (safeConfig.uiSchema && safeConfig.uiSchema.length > 0) {
           return <DynamicConfig schema={safeConfig.uiSchema} config={safeConfig} onChange={handleChange} />;
       }
-      if ([NexusSubtype.CHAT_TRIGGER, NexusSubtype.ERROR_TRIGGER].includes(safeSubtype)) {
-          return <TriggerConfig subtype={safeSubtype} config={safeConfig} onChange={handleChange} />;
+      if ([NexusSubtype.CHAT_TRIGGER, NexusSubtype.ERROR_TRIGGER].includes(subtype)) {
+          return <TriggerConfig subtype={subtype} config={safeConfig} onChange={handleChange} />;
       }
       if ([
           NexusSubtype.SHEETS_READ, NexusSubtype.SHEETS_WRITE, NexusSubtype.AIRTABLE, 
@@ -54,14 +64,14 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ nexus, onClose, onUpd
           NexusSubtype.NOTION, NexusSubtype.GOOGLE_CALENDAR, NexusSubtype.MERGE,
           NexusSubtype.SHOPIFY, NexusSubtype.STRIPE, NexusSubtype.RAZORPAY,
           NexusSubtype.CRYPTO_PRICE, NexusSubtype.BINANCE_TRADE
-      ].includes(safeSubtype)) {
-          return <BusinessConfig subtype={safeSubtype} config={safeConfig} onChange={handleChange} />;
+      ].includes(subtype)) {
+          return <BusinessConfig subtype={subtype} config={safeConfig} onChange={handleChange} />;
       }
-      if ([NexusSubtype.GITHUB, NexusSubtype.GITLAB, NexusSubtype.JIRA, NexusSubtype.DOCKER, NexusSubtype.SSH].includes(safeSubtype)) {
-          return <DevOpsConfig subtype={safeSubtype} config={safeConfig} onChange={handleChange} />;
+      if ([NexusSubtype.GITHUB, NexusSubtype.GITLAB, NexusSubtype.JIRA, NexusSubtype.DOCKER, NexusSubtype.SSH].includes(subtype)) {
+          return <DevOpsConfig subtype={subtype} config={safeConfig} onChange={handleChange} />;
       }
-      if ([NexusSubtype.HTTP_REQUEST, NexusSubtype.WEBHOOK, NexusSubtype.API_POLLER].includes(safeSubtype)) {
-          return <HttpConfig subtype={safeSubtype} config={safeConfig} nexusId={nexus.id} onChange={handleChange} projectId={projectId} />;
+      if ([NexusSubtype.HTTP_REQUEST, NexusSubtype.WEBHOOK, NexusSubtype.API_POLLER].includes(subtype)) {
+          return <HttpConfig subtype={subtype} config={safeConfig} nexusId={nexus.id} onChange={handleChange} projectId={projectId} />;
       }
       if ([
           NexusSubtype.AGENT, NexusSubtype.AI_CHAT, NexusSubtype.OPENAI_CHAT, 
@@ -69,25 +79,25 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ nexus, onClose, onUpd
           NexusSubtype.VEO_VIDEO_GEN, NexusSubtype.AI_VIDEO_EDIT, 
           NexusSubtype.AI_EXTRACT, NexusSubtype.AI_CLASSIFY, NexusSubtype.AI_SENTIMENT,
           NexusSubtype.VISION_ANALYSIS, NexusSubtype.DOC_LOADER
-      ].includes(safeSubtype)) {
-          return <AiConfig subtype={safeSubtype} config={safeConfig} onChange={handleChange} />;
+      ].includes(subtype)) {
+          return <AiConfig subtype={subtype} config={safeConfig} onChange={handleChange} />;
       }
       if ([
           NexusSubtype.EMAIL, NexusSubtype.GMAIL, NexusSubtype.OUTLOOK, NexusSubtype.MAILGUN, NexusSubtype.IMAP,
           NexusSubtype.SLACK, NexusSubtype.DISCORD, NexusSubtype.TELEGRAM, NexusSubtype.WHATSAPP,
           NexusSubtype.LINKEDIN, NexusSubtype.TWITTER, NexusSubtype.INSTAGRAM, NexusSubtype.FACEBOOK, NexusSubtype.YOUTUBE, NexusSubtype.TIKTOK
-      ].includes(safeSubtype)) {
-          return <SocialConfig subtype={safeSubtype} config={safeConfig} onChange={handleChange} />;
+      ].includes(subtype)) {
+          return <SocialConfig subtype={subtype} config={safeConfig} onChange={handleChange} />;
       }
       if ([
           NexusSubtype.SCHEDULE, NexusSubtype.DELAY, NexusSubtype.CONDITION, NexusSubtype.SWITCH, NexusSubtype.CODE_JS,
           NexusSubtype.SET_VARIABLE, NexusSubtype.SPLIT_BATCH, NexusSubtype.ITEM_LIST,
           NexusSubtype.NO_OP, NexusSubtype.EXECUTE_WORKFLOW, NexusSubtype.LOGGER
-      ].includes(safeSubtype)) {
-          return <LogicConfig subtype={safeSubtype} config={safeConfig} onChange={handleChange} />;
+      ].includes(subtype)) {
+          return <LogicConfig subtype={subtype} config={safeConfig} onChange={handleChange} />;
       }
-      if ([NexusSubtype.AWS_S3, NexusSubtype.GOOGLE_DRIVE, NexusSubtype.FTP, NexusSubtype.READ_BINARY_FILE, NexusSubtype.WRITE_BINARY_FILE, NexusSubtype.MYSQL, NexusSubtype.POSTGRES, NexusSubtype.MONGODB, NexusSubtype.SQLITE, NexusSubtype.SUPABASE].includes(safeSubtype)) {
-          return <StorageConfig subtype={safeSubtype} config={safeConfig} onChange={handleChange} />;
+      if ([NexusSubtype.AWS_S3, NexusSubtype.GOOGLE_DRIVE, NexusSubtype.FTP, NexusSubtype.READ_BINARY_FILE, NexusSubtype.WRITE_BINARY_FILE, NexusSubtype.MYSQL, NexusSubtype.POSTGRES, NexusSubtype.MONGODB, NexusSubtype.SQLITE, NexusSubtype.SUPABASE].includes(subtype)) {
+          return <StorageConfig subtype={subtype} config={safeConfig} onChange={handleChange} />;
       }
       return (
           <div className="space-y-4">
@@ -103,27 +113,53 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ nexus, onClose, onUpd
   const renderSettings = () => (
     <div className="space-y-5">
         <SectionHeader icon={Sliders} title="Advanced Settings" />
-        <div className="bg-nexus-900/50 p-4 rounded-xl border border-nexus-800 space-y-4">
-            <div className="flex items-center gap-2 text-nexus-accent text-xs font-bold uppercase tracking-wider">
-                <ShieldAlert size={14}/> Node Resilience
+        
+        {/* TRUST UX: Explicitly state this is for runtime/design separation */}
+        <div className="p-3 bg-blue-900/20 border border-blue-500/30 rounded-xl flex gap-3 items-start">
+            <Info size={16} className="text-blue-400 shrink-0 mt-0.5" />
+            <div className="text-[10px] text-blue-200/80 leading-relaxed">
+                <strong>Design-time only.</strong> Execution settings (retries, timeouts) will apply when the workflow is deployed to the runtime engine.
             </div>
-            <SelectField 
-                label="Retry Policy"
-                value={safeConfig.retryStrategy || 'NONE'}
-                onChange={(v: string) => handleChange('retryStrategy', v)}
-                options={[
-                    { label: 'No Retry', value: 'NONE' },
-                    { label: 'Fixed Interval', value: 'FIXED' },
-                    { label: 'Exponential Backoff', value: 'EXPONENTIAL' }
-                ]}
-            />
-            <ToggleField 
-                label="Continue on Error" 
-                value={safeConfig.continueOnError} 
-                onChange={(v: boolean) => handleChange('continueOnError', v)} 
-                description="Keep workflow running if this node fails."
-                activeColor="bg-yellow-500"
-            />
+        </div>
+        
+        {/* MODE BADGE */}
+        <div className="flex items-center justify-between bg-black/20 p-3 rounded-lg border border-white/5">
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Node Mode</span>
+            <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest ${safeSettings.mode === 'runtime-ready' ? 'bg-nexus-success/10 text-nexus-success border border-nexus-success/20' : 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20'}`}>
+                {safeSettings.mode === 'runtime-ready' ? 'Runtime Ready' : 'Design Only'}
+            </span>
+        </div>
+
+        <div className="bg-nexus-900/50 p-4 rounded-xl border border-nexus-800 space-y-4 relative overflow-hidden">
+            <div className="flex items-center gap-2 text-nexus-accent text-xs font-bold uppercase tracking-wider mb-2">
+                <ShieldAlert size={14}/> Resilience Protocol
+            </div>
+            
+            <div className="opacity-60 pointer-events-none grayscale">
+                <SelectField 
+                    label="Retry Policy"
+                    value={safeSettings.retryPolicy}
+                    onChange={(v: string) => handleSettingsChange('retryPolicy', v)}
+                    options={[
+                        { label: 'No Retry', value: 'none' },
+                        { label: 'Retry Once', value: 'once' },
+                        { label: 'Retry Twice', value: 'twice' }
+                    ]}
+                />
+                <div className="mt-1 text-[9px] text-yellow-500 font-mono flex items-center gap-1 opacity-80">
+                    <AlertTriangle size={10} /> Pending runtime deployment.
+                </div>
+            </div>
+
+            <div className="opacity-60 pointer-events-none grayscale mt-4">
+                <ToggleField 
+                    label="Continue on Error" 
+                    value={safeSettings.continueOnError} 
+                    onChange={(v: boolean) => handleSettingsChange('continueOnError', v)} 
+                    description="Keep workflow running if this node fails."
+                    activeColor="bg-yellow-500"
+                />
+            </div>
         </div>
     </div>
   );
@@ -137,7 +173,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ nexus, onClose, onUpd
             </div>
             <div>
                 <h2 className="font-bold text-sm text-white truncate w-32">{safeLabel}</h2>
-                <p className="text-[9px] text-gray-500 font-mono uppercase tracking-widest">{safeSubtype.replace('_', ' ')}</p>
+                <p className="text-[9px] text-gray-500 font-mono uppercase tracking-widest">{safeSubtype.replace(/_/g, ' ')}</p>
             </div>
         </div>
         <button onClick={onClose} className="p-2 text-gray-400 hover:text-white hover:bg-nexus-800 rounded-lg transition-colors"><X size={18} /></button>

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, X, Terminal, ShieldCheck, AlertTriangle, Loader2, CheckCircle2, Zap, Brain, TrendingUp, Sparkles, Wand2, Activity, Server, Cloud, CloudLightning, RotateCcw } from 'lucide-react';
-import { Nexus, Synapse, ExecutionState, NexusType } from '../types';
+import { Play, X, Terminal, ShieldCheck, AlertTriangle, Loader2, CheckCircle2, Zap, Brain, TrendingUp, Sparkles, Wand2, Activity, Server, Cloud, CloudLightning, RotateCcw, AlertCircle, Info } from 'lucide-react';
+import { Nexus, Synapse, ExecutionState, NexusType, FlowWarning } from '../types';
 import { WorkflowOrchestrator, ExecutionResult } from '../services/executionEngine';
 import { createCloudRun, subscribeToRun } from '../services/cloudStore';
 import { useAuth } from '../context/AuthContext';
@@ -21,7 +21,11 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
   const [isCloudRun, setIsCloudRun] = useState(false);
   const [jsonInput, setJsonInput] = useState('{\n  "event": "production_handshake",\n  "metadata": { "env": "cloud-v2" }\n}');
   const [logs, setLogs] = useState<{ msg: string, type: string, nodeId?: string }[]>([]);
-  const [validationError, setValidationError] = useState<string | null>(null);
+  
+  // Validation State
+  const [warnings, setWarnings] = useState<FlowWarning[]>([]);
+  const [isBlocked, setIsBlocked] = useState(false);
+
   const [finalResult, setFinalResult] = useState<ExecutionResult | null>(null);
   const [isHealing, setIsHealing] = useState(false);
   
@@ -34,13 +38,14 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
   useEffect(() => {
       if (isOpen) {
           const engine = new WorkflowOrchestrator(nexuses, synapses, () => {});
-          // Fix: Call validate() which is now implemented in WorkflowOrchestrator
-          const v = engine.validate();
-          setValidationError(v.isValid ? null : v.error!);
+          
+          // PERFORM HEALTH CHECK
+          const health = engine.validate();
+          setWarnings(health.warnings);
+          setIsBlocked(!health.valid);
           
           if (resumeState) {
               setLogs([{ msg: `Resuming execution ${resumeState.runId}...`, type: 'INFO' }]);
-              // Auto-trigger resume
               handleLocalStart(resumeState);
           } else {
               setLogs([]);
@@ -51,7 +56,7 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
   }, [isOpen, nexuses, synapses, resumeState]);
 
   const handleLocalStart = async (stateToResume?: ExecutionState) => {
-      if (validationError) return;
+      if (isBlocked) return;
       setLogs(prev => stateToResume ? prev : []); 
       setFinalResult(null);
       setActiveRunning(true);
@@ -80,14 +85,13 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
           stateToResume || undefined
       );
       
-      // Fix: start method expects 1 argument (payload), userId is already provided to constructor
       const result = await engine.start(payload);
       setFinalResult(result);
       setActiveRunning(false);
   };
 
   const handleCloudStart = async () => {
-      if (validationError) return;
+      if (isBlocked) return;
       setLogs([]);
       setFinalResult(null);
       setActiveRunning(true);
@@ -120,7 +124,6 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
           const unsubscribe = subscribeToRun(runId, (updatedState) => {
               if (updatedState.status === 'COMPLETED') {
                   setLogs(prev => [...prev, { msg: "Execution finished successfully.", type: 'SUCCESS' }]);
-                  // Fix: ExecutionResult interface updated to include logs and telemetry
                   setFinalResult({
                       status: 'SUCCESS',
                       executionId: runId,
@@ -182,7 +185,45 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
         </div>
 
         <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
-            <div className="w-full md:w-[380px] p-10 bg-[#030303] border-r border-white/5 flex flex-col">
+            <div className="w-full md:w-[380px] p-10 bg-[#030303] border-r border-white/5 flex flex-col overflow-y-auto">
+                
+                {/* HEALTH REPORT */}
+                {warnings.length > 0 && (
+                    <div className="mb-6 animate-in slide-in-from-left-2">
+                        <div className="flex items-center justify-between mb-3">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Flow Health</span>
+                            {isBlocked && <span className="bg-red-500/20 text-red-400 text-[9px] px-2 py-0.5 rounded border border-red-500/30 font-bold uppercase">Blocked</span>}
+                        </div>
+                        <div className="space-y-2">
+                            {warnings.map((w, idx) => (
+                                <div key={idx} className={`p-3 rounded-xl border flex gap-3 ${
+                                    w.level === 'ERROR' ? 'bg-red-900/10 border-red-900/30' : 
+                                    w.level === 'WARNING' ? 'bg-yellow-900/10 border-yellow-900/30' : 
+                                    'bg-blue-900/10 border-blue-900/30'
+                                }`}>
+                                    <div className={`mt-0.5 ${
+                                        w.level === 'ERROR' ? 'text-red-500' : 
+                                        w.level === 'WARNING' ? 'text-yellow-500' : 
+                                        'text-blue-500'
+                                    }`}>
+                                        {w.level === 'ERROR' ? <AlertCircle size={14} /> : 
+                                         w.level === 'WARNING' ? <AlertTriangle size={14} /> : 
+                                         <Info size={14} />}
+                                    </div>
+                                    <div>
+                                        <div className={`text-[10px] font-bold uppercase mb-0.5 ${
+                                            w.level === 'ERROR' ? 'text-red-400' : 
+                                            w.level === 'WARNING' ? 'text-yellow-400' : 
+                                            'text-blue-400'
+                                        }`}>{w.level}</div>
+                                        <p className="text-[10px] text-gray-400 leading-relaxed">{w.message}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {finalResult ? (
                     <div className="space-y-6 animate-in slide-in-from-left-4">
                         <div className="p-6 bg-blue-600/5 border border-blue-600/20 rounded-[30px]">
@@ -211,7 +252,7 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
                             value={jsonInput} 
                             onChange={(e) => setJsonInput(e.target.value)} 
                             disabled={!!resumeState}
-                            className={`flex-1 w-full bg-black border border-white/5 rounded-[30px] p-8 text-[12px] text-nexus-wire font-mono outline-none focus:border-nexus-accent/40 transition-all resize-none shadow-inner ${resumeState ? 'opacity-50 grayscale' : ''}`}
+                            className={`flex-1 w-full bg-black border border-white/5 rounded-[30px] p-8 text-[12px] text-nexus-wire font-mono outline-none focus:border-nexus-accent/40 transition-all resize-none shadow-inner min-h-[200px] ${resumeState ? 'opacity-50 grayscale' : ''}`}
                         />
                         {resumeState && (
                             <div className="mt-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl">
@@ -246,16 +287,16 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
                 {!resumeState && (
                   <button 
                       onClick={handleCloudStart} 
-                      disabled={activeRunning || !!validationError}
-                      className="px-12 py-5 bg-nexus-900 border border-nexus-800 text-gray-300 font-black rounded-3xl text-[11px] uppercase tracking-[0.2em] flex items-center gap-3 hover:bg-nexus-800 hover:text-white transition-all"
+                      disabled={activeRunning || isBlocked}
+                      className={`px-12 py-5 bg-nexus-900 border border-nexus-800 text-gray-300 font-black rounded-3xl text-[11px] uppercase tracking-[0.2em] flex items-center gap-3 transition-all ${isBlocked ? 'opacity-50 cursor-not-allowed' : 'hover:bg-nexus-800 hover:text-white'}`}
                   >
                       <CloudLightning size={20}/> Cloud Pulse
                   </button>
                 )}
                 <button 
                     onClick={() => handleLocalStart()} 
-                    disabled={activeRunning || !!validationError}
-                    className="px-12 py-5 bg-nexus-accent text-black font-black rounded-3xl text-[11px] uppercase tracking-[0.2em] flex items-center gap-3 hover:bg-nexus-success transition-all shadow-[0_20px_60px_rgba(0,255,157,0.25)] active:scale-95"
+                    disabled={activeRunning || isBlocked}
+                    className={`px-12 py-5 bg-nexus-accent text-black font-black rounded-3xl text-[11px] uppercase tracking-[0.2em] flex items-center gap-3 transition-all shadow-[0_20px_60px_rgba(0,255,157,0.25)] active:scale-95 ${isBlocked ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:bg-nexus-success'}`}
                 >
                     {activeRunning ? <Loader2 className="animate-spin" size={20}/> : <Play size={20} fill="currentColor"/>}
                     {resumeState ? 'Resume Runtime' : 'Start Sequence'}

@@ -20,7 +20,7 @@ export enum NexusSubtype {
   // --- LOGIC / FLOW CONTROL ---
   NO_OP = 'NO_OP',
   EXECUTE_WORKFLOW = 'EXECUTE_WORKFLOW',
-  AI_ROUTER = 'AI_ROUTER', // NEW: DeepAgent Decision Node
+  AI_ROUTER = 'AI_ROUTER', 
   
   // --- AI / ML / TEXT TOOLS ---
   AGENT = 'AGENT',             
@@ -133,6 +133,32 @@ export type ProjectStatus = 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED';
 
 export type DealStage = 'NEW' | 'QUALIFIED' | 'PROPOSAL' | 'NEGOTIATION' | 'WON';
 
+// --- TRUTHFUL NODE SETTINGS ---
+export type NodeMode = 'design-only' | 'runtime-ready';
+
+export interface NodeSettings {
+  retryPolicy: 'none' | 'once' | 'twice';
+  continueOnError: boolean;
+  mode: NodeMode;
+}
+
+// --- NEW: TRUTHFUL CHANNEL CONNECTION STATES ---
+export type ChannelType = 'telegram' | 'whatsapp' | 'discord' | 'slack';
+
+export type ChannelStatus =
+  | 'not_connected'
+  | 'connected_design_only'
+  | 'connected_messaging'
+  | 'disconnected'
+  | 'error';
+
+// --- FLOW VALIDATION ---
+export interface FlowWarning {
+    level: 'INFO' | 'WARNING' | 'ERROR';
+    message: string;
+    nodeId?: string;
+}
+
 export interface Credential {
   id: string;
   name: string;
@@ -171,6 +197,7 @@ export interface NexusDefinition {
 
 export interface NexusConfig {
   [key: string]: any;
+  _connectionStatus?: ChannelStatus;
 }
 
 export interface NexusStyle {
@@ -187,6 +214,7 @@ export interface Nexus {
   label: string;
   position: { x: number; y: number };
   config: NexusConfig;
+  settings?: NodeSettings; // Added explicit settings object
   style?: NexusStyle; 
   status?: 'idle' | 'running' | 'success' | 'error' | 'retrying'; 
   lastOutput?: any;
@@ -271,42 +299,116 @@ export interface Project {
   inputSchema?: DynamicField[]; 
 }
 
+export type UserRole = 'OWNER' | 'ADMIN' | 'USER';
+
 export interface UserPlan {
     uid: string;
     email: string;
     tier: PlanTier;
     region: Region;
+    role: UserRole; // Added Role
     status: 'active' | 'expired' | 'cancelled';
     expiresAt: number;
     updatedAt: number;
-    autoRenew: boolean;
+    autoRenew: boolean; // TRUE = Active, FALSE = Cancelled (Grace Period)
     lastPaymentId?: string;
+    subscriptionId?: string; // Tracks Razorpay/PayPal Subscription ID
+    provider?: 'RAZORPAY' | 'PAYPAL' | 'STRIPE';
     appliedCoupon?: string;
     finalPrice?: number;
     credits: number;
     monthlyLimit: number;
+    referralCode?: string;
 }
 
-export interface PaymentTransaction {
+// --- ADMIN SYSTEM TYPES ---
+export interface UserAccount { 
+    uid: string;
+    email: string;
+    displayName: string;
+    role: UserRole;
+    tier: PlanTier;
+    status: 'ACTIVE' | 'DISABLED';
+    joinedAt: number;
+    lastLoginAt: number;
+}
+
+export interface AdminPayment {
     id: string;
     userId: string;
     userEmail: string;
-    externalPaymentId: string;
     amount: number;
-    currency: 'INR' | 'USD';
-    gateway: 'razorpay' | 'paypal';
-    tier: PlanTier;
-    cycle: 'monthly' | 'yearly';
-    status: 'success' | 'failed' | 'pending';
-    couponUsed: string;
+    currency: 'USD' | 'INR';
+    status: 'SUCCESS' | 'FAILED' | 'REFUNDED';
+    gateway: 'STRIPE' | 'RAZORPAY' | 'PAYPAL';
+    date: number;
+}
+
+// --- NEW: ROBUST PAYMENT RECORD ---
+export interface PaymentRecord {
+    id: string;                // gateway payment / subscription id (razorpay_payment_id)
+    orderId?: string;          // razorpay_order_id
+    userId: string;
+    gateway: "RAZORPAY" | "PAYPAL";
+    type: 'SUBSCRIPTION' | 'ADDON'; // NEW
+    plan?: "PRO" | "BUSINESS"; // Optional if addon
+    packId?: string; // Optional if subscription
+    amount: number;
+    currency: "INR" | "USD";
+    status: "created" | "pending" | "success" | "failed" | "refunded"; // Added refunded
+    createdAt: number;
+    updatedAt: number;
+    metadata?: any;
+}
+
+export interface AddOnPack {
+    id: string;
+    name: string;
+    credits: number;
+    price: {
+        IN: number;
+        GLOBAL: number;
+    };
+}
+
+// --- NEW: WEBHOOK EVENT LOG (IDEMPOTENCY) ---
+export interface WebhookEventLog {
+    eventId: string;        // Razorpay / PayPal event id from payload
+    gateway: "RAZORPAY" | "PAYPAL";
+    eventType: string;
+    processed: boolean;
+    createdAt: number;
+    error?: string;
+}
+
+export interface AdminPromo {
+    code: string;
+    type: 'PERCENT' | 'FLAT';
+    value: number;
+    currency?: 'INR' | 'USD';
+    maxUses: number;
+    used: number;
+    expiresAt?: number;
+    validPlans: PlanTier[];
+    active: boolean;
     createdAt: number;
 }
 
 export interface CouponData {
     code: string;
-    discountPercent: number;
+    discountType: 'PERCENT' | 'FLAT';
+    discountValue: number;
+    currency?: 'INR' | 'USD';
     validTiers: PlanTier[];
     requiredAutoPay: boolean;
+}
+
+export interface ReferralStats {
+    userId: string;
+    code: string;
+    totalInvites: number;
+    earnedCredits: number;
+    pendingRewards: number;
 }
 
 export interface MarketplaceItem {

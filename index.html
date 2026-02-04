@@ -91,18 +91,28 @@
       body {
         background-color: #050505;
         color: #e2e8f0;
-        overflow: hidden;
+        /* FIXED: Changed from hidden to auto to allow Landing Page scrolling */
+        overflow-y: auto; 
+        overflow-x: hidden;
         -webkit-tap-highlight-color: transparent;
-        overscroll-behavior: none;
-        user-select: none;
+        scroll-behavior: smooth;
+      }
+      /* Ensure root container handles height properly */
+      #root {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
       }
       ::-webkit-scrollbar {
-        width: 4px;
-        height: 4px;
+        width: 6px;
+        height: 6px;
       }
       ::-webkit-scrollbar-thumb {
         background: #262626;
-        border-radius: 2px;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #050505;
       }
       .grid-pattern {
         background-color: #050505;
@@ -148,7 +158,9 @@
     "firebase-functions": "https://esm.sh/firebase-functions@^7.0.3",
     "firebase-admin": "https://esm.sh/firebase-admin@^13.6.0",
     "axios": "https://esm.sh/axios@^1.13.3",
-    "firebase-functions/": "https://esm.sh/firebase-functions@^7.0.3/"
+    "firebase-functions/": "https://esm.sh/firebase-functions@^7.0.3/",
+    "crypto": "https://esm.sh/crypto@^1.0.1",
+    "razorpay": "https://esm.sh/razorpay@^2.9.6"
   }
 }
 </script>

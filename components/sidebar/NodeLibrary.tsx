@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { NEXUS_DEFINITIONS } from '../../constants';
 import { NexusType, NexusSubtype } from '../../types';
-import { Search, ChevronDown, ChevronRight, Lock, Unlock, Zap, Split, Globe, GitMerge, HardDrive, Database, Building2, Terminal, MessageCircle, Brain, LayoutGrid, X } from 'lucide-react';
+import { Search, ChevronDown, ChevronRight, Lock, Unlock, Zap, Split, Globe, GitMerge, HardDrive, Database, Building2, Terminal, MessageCircle, Brain, LayoutGrid, X, AlertTriangle } from 'lucide-react';
 
 interface NodeLibraryProps {
     onAddNexus: (type: NexusType, subtype: NexusSubtype) => void;
@@ -12,10 +12,7 @@ interface NodeLibraryProps {
 
 const NodeLibrary: React.FC<NodeLibraryProps> = ({ onAddNexus, onUpgradeClick, isDevMode }) => {
     const [searchTerm, setSearchTerm] = useState('');
-    const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
-        'Input / Trigger': true, 
-        'AI & Intelligence': true 
-    });
+    const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
     const toggleCategory = (cat: string) => {
         setExpandedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
@@ -25,28 +22,16 @@ const NodeLibrary: React.FC<NodeLibraryProps> = ({ onAddNexus, onUpgradeClick, i
         switch(cat) {
             case 'Input / Trigger': return <Zap size={14} className="text-nexus-wire"/>;
             case 'Logic / Flow control': return <Split size={14} className="text-pink-400"/>;
-            case 'HTTP / API': return <Globe size={14} className="text-blue-400"/>;
-            case 'Data Processing': return <GitMerge size={14} className="text-purple-400"/>;
-            case 'Files / Storage': return <HardDrive size={14} className="text-orange-400"/>;
-            case 'Databases': return <Database size={14} className="text-green-400"/>;
-            case 'Business Ops & CRM': return <Building2 size={14} className="text-cyan-400"/>;
-            case 'Dev / Ops': return <Terminal size={14} className="text-red-400"/>;
-            case 'Email / Chat': return <MessageCircle size={14} className="text-indigo-400"/>;
             case 'AI & Intelligence': return <Brain size={14} className="text-nexus-accent"/>;
             default: return <LayoutGrid size={14} className="text-gray-400"/>;
         }
     };
 
-    const CATEGORY_ORDER = [
-        'Input / Trigger', 'Logic / Flow control', 'AI & Intelligence', 'HTTP / API', 
-        'Data Processing', 'Business Ops & CRM', 'Dev / Ops', 'Files / Storage', 
-        'Databases', 'Email / Chat', 
-    ];
+    const CATEGORY_ORDER = ['AI & Intelligence', 'Input / Trigger', 'Logic / Flow control'];
 
     const filteredDefinitions = NEXUS_DEFINITIONS.filter(def => 
         def.label.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        def.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        def.subtype.toLowerCase().includes(searchTerm.toLowerCase())
+        def.category.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     const groupedNodes = filteredDefinitions.reduce((acc, def) => {
@@ -65,10 +50,26 @@ const NodeLibrary: React.FC<NodeLibraryProps> = ({ onAddNexus, onUpgradeClick, i
         return a.localeCompare(b);
     });
 
-    const isLocked = (def: any) => def.isPremium && !isDevMode;
+    const handleDragStart = (e: React.DragEvent, type: NexusType, subtype: NexusSubtype) => {
+        e.dataTransfer.setData('nexus/type', type);
+        e.dataTransfer.setData('nexus/subtype', subtype);
+        e.dataTransfer.effectAllowed = 'copy';
+    };
 
     return (
         <div className="flex-1 flex flex-col h-full overflow-hidden">
+            {/* AI Call to Action */}
+            {!searchTerm && (
+                <div className="m-3 p-4 bg-nexus-accent/5 border border-nexus-accent/20 rounded-xl text-center">
+                    <div className="text-[10px] font-black text-nexus-accent uppercase tracking-widest mb-2 flex items-center justify-center gap-2">
+                        <Brain size={12}/> AI-Native Mode
+                    </div>
+                    <p className="text-[10px] text-gray-500 leading-relaxed">
+                        Manual blocks are minimized. Use the <b>Architect</b> (✨) for best results.
+                    </p>
+                </div>
+            )}
+
             {/* SEARCH BAR */}
             <div className="p-3 border-b border-nexus-800 bg-nexus-950 shrink-0">
                 <div className="relative">
@@ -77,14 +78,9 @@ const NodeLibrary: React.FC<NodeLibraryProps> = ({ onAddNexus, onUpgradeClick, i
                         type="text" 
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder="Search nodes..."
+                        placeholder="Search manual blocks..."
                         className="w-full bg-nexus-900 border border-nexus-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:border-nexus-accent outline-none"
                     />
-                    {searchTerm && (
-                        <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white">
-                            <X size={12}/>
-                        </button>
-                    )}
                 </div>
             </div>
 
@@ -111,46 +107,29 @@ const NodeLibrary: React.FC<NodeLibraryProps> = ({ onAddNexus, onUpgradeClick, i
 
                             {isExpanded && (
                                 <div className="bg-black/20 p-2 space-y-1 animate-in slide-in-from-top-1 duration-200">
-                                    {nodes.map(def => {
-                                        const locked = isLocked(def);
-                                        return (
-                                            <button
-                                                key={def.subtype}
-                                                onClick={() => locked ? onUpgradeClick() : onAddNexus(def.type, def.subtype)}
-                                                className={`w-full flex items-center justify-between p-2 rounded-lg border transition-all text-left group relative ${locked ? 'bg-nexus-950/30 border-nexus-800/30 opacity-60' : 'bg-transparent hover:bg-nexus-800 border-transparent hover:border-nexus-700'}`}
-                                            >
-                                                <div className="flex items-center gap-3 overflow-hidden">
-                                                    <div className={`p-1.5 rounded-md ${locked ? 'bg-nexus-950 text-gray-600' : 'bg-nexus-900 text-nexus-accent'}`}>
-                                                        <def.icon size={14} />
-                                                    </div>
-                                                    <div className="truncate">
-                                                        <div className="text-xs font-bold text-gray-300 group-hover:text-white transition-colors">{def.label}</div>
-                                                    </div>
+                                    {nodes.map(def => (
+                                        <div
+                                            key={def.subtype}
+                                            draggable
+                                            onDragStart={(e) => handleDragStart(e, def.type, def.subtype)}
+                                            onClick={(e) => { e.preventDefault(); onAddNexus(def.type, def.subtype); }}
+                                            className="w-full flex items-center justify-between p-2 rounded-lg border border-transparent hover:bg-nexus-800 hover:border-nexus-700 transition-all text-left cursor-grab active:cursor-grabbing"
+                                        >
+                                            <div className="flex items-center gap-3 overflow-hidden pointer-events-none">
+                                                <div className="p-1.5 bg-nexus-900 rounded-md text-nexus-accent">
+                                                    <def.icon size={14} />
                                                 </div>
-                                                {def.isPremium && (
-                                                    <div className="ml-2">
-                                                        {locked ? (
-                                                            <Lock size={10} className="text-nexus-wire flex-shrink-0" />
-                                                        ) : (
-                                                            <Unlock size={10} className="text-nexus-success flex-shrink-0" />
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </button>
-                                        );
-                                    })}
+                                                <div className="truncate">
+                                                    <div className="text-xs font-bold text-gray-300">{def.label}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
                         </div>
                     );
                 })}
-                
-                {sortedCategories.length === 0 && (
-                    <div className="text-center py-8 text-gray-500">
-                        <Search size={24} className="mx-auto mb-2 opacity-50"/>
-                        <p className="text-xs">No nodes match "{searchTerm}"</p>
-                    </div>
-                )}
             </div>
         </div>
     );

@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { Project, ProjectStatus } from '../types';
-import { Search, Plus, Trash2, Layout, Clock, PlayCircle, ShieldAlert, WifiOff } from 'lucide-react';
+import { Project, ProjectStatus, PlanTier } from '../types';
+import { Search, Plus, Trash2, Layout, Clock, PlayCircle, ShieldAlert, WifiOff, Lock } from 'lucide-react';
 import { checkDbConnection } from '../services/projectService';
 import { useAuth } from '../context/AuthContext';
+import { PLAN_LIMITS } from '../constants';
 
 interface ProjectListProps {
   projects: Project[];
@@ -12,9 +13,11 @@ interface ProjectListProps {
   onDeleteProject: (id: string) => void;
   onRefresh?: () => void;
   onInternalLaunch?: (projectId: string) => void; 
+  userPlan?: PlanTier;
+  onUpgrade?: () => void;
 }
 
-const ProjectList: React.FC<ProjectListProps> = ({ projects, onCreateProject, onOpenProject, onDeleteProject, onRefresh, onInternalLaunch }) => {
+const ProjectList: React.FC<ProjectListProps> = ({ projects, onCreateProject, onOpenProject, onDeleteProject, onRefresh, onInternalLaunch, userPlan = 'FREE', onUpgrade }) => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'ALL' | ProjectStatus>('ALL');
   const [search, setSearch] = useState('');
@@ -50,6 +53,10 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onCreateProject, on
     }
   };
 
+  // CHECK LIMITS
+  const projectLimit = PLAN_LIMITS[userPlan].PROJECTS;
+  const isLimitReached = projects.length >= projectLimit;
+
   return (
     <div className="flex-1 h-full bg-[#050505] overflow-y-auto p-6 md:p-10 font-sans">
       
@@ -57,7 +64,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onCreateProject, on
         <div>
           <h1 className="text-3xl font-black text-white mb-2 flex items-center gap-3">
             <Layout className="text-nexus-accent" /> Workspaces
-            <span className="text-xs bg-nexus-800 text-gray-500 px-2 py-1 rounded-lg font-mono">{projects.length}</span>
+            <span className="text-xs bg-nexus-800 text-gray-500 px-2 py-1 rounded-lg font-mono">{projects.length} / {userPlan === 'FREE' ? projectLimit : '∞'}</span>
           </h1>
           <p className="text-gray-500 text-sm font-medium">Manage and deploy your automated workflows.</p>
         </div>
@@ -70,13 +77,24 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onCreateProject, on
                  </div>
              )}
 
-             <button 
-              onClick={() => setIsCreating(true)}
-              className="p-3 bg-nexus-900 text-nexus-accent border border-nexus-800 rounded-xl hover:bg-nexus-800 transition-all flex items-center gap-2 shadow-lg"
-              title="Create New Workspace"
-            >
-              <Plus size={18} />
-            </button>
+             {isLimitReached ? (
+                 <button 
+                    onClick={onUpgrade}
+                    className="p-3 bg-nexus-900 text-gray-500 border border-nexus-800 rounded-xl hover:bg-nexus-800 hover:text-white transition-all flex items-center gap-2 shadow-lg group"
+                    title="Limit Reached"
+                 >
+                    <Lock size={18} className="group-hover:text-nexus-accent" />
+                    <span className="text-[10px] font-black uppercase hidden md:inline">Upgrade Plan</span>
+                 </button>
+             ) : (
+                 <button 
+                  onClick={() => setIsCreating(true)}
+                  className="p-3 bg-nexus-900 text-nexus-accent border border-nexus-800 rounded-xl hover:bg-nexus-800 transition-all flex items-center gap-2 shadow-lg"
+                  title="Create New Workspace"
+                >
+                  <Plus size={18} />
+                </button>
+             )}
         </div>
       </div>
 
@@ -137,6 +155,14 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onCreateProject, on
             <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-nexus-accent/5 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
           </div>
         ))}
+        
+        {/* Helper Card for Free Plan Limit Context */}
+        {userPlan === 'FREE' && projects.length === 0 && (
+            <div className="bg-nexus-900/20 border-2 border-dashed border-nexus-800 rounded-[24px] p-6 flex flex-col items-center justify-center text-center opacity-60">
+                <p className="text-xs text-gray-500 mb-2">Free Plan Limit: 1 Project</p>
+                <div className="text-[10px] text-gray-600">Create your first automation to get started.</div>
+            </div>
+        )}
       </div>
     </div>
   );

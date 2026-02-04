@@ -1,7 +1,67 @@
 
 import { db, auth } from './firebase';
-import { Blueprint, UserPlan, PaymentTransaction, PlanTier, CouponData, ExecutionLog, ExecutionState } from '../types';
+import { Blueprint, UserPlan, PlanTier, CouponData, ExecutionLog, ExecutionState, Nexus, Synapse, Region, AdminPromo } from '../types';
 import firebase from 'firebase/compat/app';
+import { listPromos } from './adminService'; // New import
+
+// --- ARCHITECT MEMORY SYSTEM (Self-Improvement) ---
+
+export interface ArchitectMemory {
+    id?: string;
+    userPrompt: string;
+    blueprintSummary: string; // Brief description of what was built
+    fullBlueprint: { nexuses: Nexus[], synapses: Synapse[] };
+    createdAt: number;
+    likes?: number;
+}
+
+export const saveArchitectMemory = async (prompt: string, nexuses: Nexus[], synapses: Synapse[]) => {
+    if (!db) return;
+    
+    // Only save complex workflows (more than 2 nodes) to keep quality high
+    if (nexuses.length < 3) return;
+
+    try {
+        const memory: ArchitectMemory = {
+            userPrompt: prompt,
+            blueprintSummary: `Workflow with ${nexuses.length} nodes: ${nexuses.map(n => n.subtype).join(', ')}`,
+            fullBlueprint: { nexuses, synapses },
+            createdAt: Date.now(),
+            likes: 1
+        };
+
+        await db.collection('architect_memory').add(memory);
+        console.log("[Architect] Memory saved for training.");
+    } catch (e) {
+        console.warn("Failed to save memory:", e);
+    }
+};
+
+export const getArchitectMemories = async (limit: number = 5): Promise<string> => {
+    if (!db) return "";
+
+    try {
+        // Fetch recent successful workflows to use as "Few-Shot Examples"
+        const snapshot = await db.collection('architect_memory')
+            .orderBy('createdAt', 'desc')
+            .limit(limit)
+            .get();
+
+        if (snapshot.empty) return "";
+
+        let contextString = "\n### LEARNED PATTERNS FROM PREVIOUS USERS (USE AS REFERENCE):\n";
+        
+        snapshot.forEach(doc => {
+            const data = doc.data() as ArchitectMemory;
+            contextString += `- USER ASKED: "${data.userPrompt}"\n`;
+            contextString += `  SUCCESSFUL ARCHITECTURE: ${data.blueprintSummary}\n`;
+        });
+
+        return contextString;
+    } catch (e) {
+        return "";
+    }
+};
 
 // --- FUEL TANK: DAILY USAGE & QUOTA SENTRY ---
 export const updateDailyUsage = async (userId: string): Promise<{ allowed: boolean, count: number }> => {
@@ -110,11 +170,52 @@ export const getUserBlueprints = async (userId: string): Promise<Blueprint[]> =>
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Blueprint));
 };
 
-export const validateCoupon = async (code: string, tier: PlanTier): Promise<CouponData> => {
-    if (code === 'WELCOME50') return { code: 'WELCOME50', discountPercent: 50, validTiers: ['PRO', 'BUSINESS'], requiredAutoPay: true };
-    throw new Error("Invalid or expired coupon code.");
+// --- DYNAMIC COUPON VALIDATION ---
+export const validateCoupon = async (code: string, tier: PlanTier, region: Region): Promise<CouponData> => {
+    const cleanCode = code.toUpperCase().trim();
+    
+    // 1. Fetch from Admin Service (Simulated Backend)
+    const allPromos = await listPromos();
+    const promo = allPromos.find(p => p.code === cleanCode);
+
+    if (!promo) throw new Error("Invalid promo code.");
+    if (!promo.active) throw new Error("This promo code has been disabled.");
+    if (promo.used >= promo.maxUses) throw new Error("Promo code limit reached.");
+    if (promo.expiresAt && Date.now() > promo.expiresAt) throw new Error("Promo code expired.");
+    
+    // Check Tier
+    if (!promo.validPlans.includes(tier)) {
+        throw new Error(`This code is only valid for ${promo.validPlans.join('/')} plans.`);
+    }
+
+    // Check Region / Currency Mismatch
+    if (promo.currency) {
+        if (region === 'IN' && promo.currency !== 'INR') throw new Error("This code cannot be used in India.");
+        if (region === 'GLOBAL' && promo.currency !== 'USD') throw new Error("This code is for India region only.");
+    }
+
+    // Return Normalized Data
+    return { 
+        code: cleanCode, 
+        discountType: promo.type, 
+        discountValue: promo.value,
+        validTiers: promo.validPlans,
+        requiredAutoPay: true 
+    };
 };
 
 export const processPaymentSuccess = async (userId: string, email: string, details: any): Promise<UserPlan> => {
-    return { uid: userId, email: email, tier: details.tier, region: details.currency === 'INR' ? 'IN' : 'GLOBAL', status: 'active', expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000, updatedAt: Date.now(), autoRenew: details.autoRenew, credits: 5000, monthlyLimit: 5000 };
+    return { 
+        uid: userId, 
+        email: email, 
+        tier: details.tier, 
+        region: details.currency === 'INR' ? 'IN' : 'GLOBAL', 
+        status: 'active', 
+        expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000, 
+        updatedAt: Date.now(), 
+        autoRenew: details.autoRenew, 
+        credits: 5000, 
+        monthlyLimit: 5000,
+        role: 'USER'
+    };
 };

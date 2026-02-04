@@ -1,5 +1,5 @@
 
-import { NexusSubtype, NexusType, NexusDefinition } from "./types";
+import { NexusSubtype, NexusType, NexusDefinition, NodeSettings, AddOnPack } from "./types";
 import { 
   Zap, Clock, Globe, Brain, 
   Pause, Split, Terminal, Mail,
@@ -16,6 +16,68 @@ import {
 } from "lucide-react";
 
 export const RECAPTCHA_SITE_KEY = "6Lc6SDcsAAAAAOsn_zVFCI2vzlIKLB9AdLCtF5cD";
+
+// --- PLAN LIMITS (CONVERSION ENGINE) ---
+export const PLAN_LIMITS = {
+  FREE: {
+    PROJECTS: 1,
+    AI_PROMPTS: 5,
+    CLOUD_SAVE: false,
+    LABEL: 'Explorer',
+    PRICE: '$0'
+  },
+  PRO: {
+    PROJECTS: 999, // Effectively Unlimited
+    AI_PROMPTS: 200,
+    CLOUD_SAVE: true,
+    LABEL: 'Pro',
+    PRICE: '$49'
+  },
+  BUSINESS: {
+    PROJECTS: 9999,
+    AI_PROMPTS: 1000,
+    CLOUD_SAVE: true,
+    LABEL: 'Business',
+    PRICE: '$99'
+  }
+};
+
+export const ADDON_PACKS: AddOnPack[] = [
+    {
+        id: 'pack_50',
+        name: 'Starter Boost',
+        credits: 50,
+        price: { IN: 299, GLOBAL: 5 }
+    },
+    {
+        id: 'pack_100',
+        name: 'Pro Boost',
+        credits: 100,
+        price: { IN: 499, GLOBAL: 9 }
+    },
+    {
+        id: 'pack_500',
+        name: 'Power Pack',
+        credits: 500,
+        price: { IN: 1999, GLOBAL: 39 }
+    }
+];
+
+// --- NODE SAFEGUARD DEFAULTS ---
+export const DEFAULT_NODE_SETTINGS: NodeSettings = {
+  retryPolicy: 'none',
+  continueOnError: false,
+  mode: 'design-only'
+};
+
+// --- TRUTHFUL CHANNEL COPY ---
+export const CHANNEL_STATUS_TEXT: Record<string, string> = {
+  not_connected: "Not connected",
+  connected_design_only: "Connected (design-only)",
+  connected_messaging: "Messaging enabled",
+  disconnected: "Disconnected",
+  error: "Connection error"
+};
 
 export const MOCK_CONTACTS = [
     { id: 'c1', name: 'Alice Freeman', email: 'alice@techcorp.com', company: 'TechCorp', tags: ['VIP', 'Decision Maker'], lastActivity: Date.now() - 100000, sentiment: 'positive' },

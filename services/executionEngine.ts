@@ -1,5 +1,5 @@
 
-import { Nexus, Synapse, NexusSubtype, NexusType, ExecutionState } from '../types';
+import { Nexus, Synapse, NexusSubtype, NexusType, ExecutionState, FlowWarning } from '../types';
 import { saveRunState, clearRunState, checkRateLimit, updateDailyUsage } from './cloudStore'; 
 import { GoogleGenAI } from "@google/genai";
 
@@ -10,14 +10,16 @@ export interface ExecutionResult {
     executionId: string;
     duration: number;
     output: any;
-    // Fix: Added logs and telemetry to match interface expectations in UI components
     logs: any[];
     telemetry: any[];
 }
 
 const MAX_STEPS_PER_RUN = 50; 
 const MAX_REPEATS_PER_NODE = 3; 
-const EXECUTION_TIMEOUT_MS = 60000; // 1 Minute Safety Kill
+const EXECUTION_TIMEOUT_MS = 60000; 
+
+// NON-BLOCKING YIELD: Prevents the UI from freezing during execution loops
+const yieldToMain = () => new Promise(resolve => setTimeout(resolve, 0));
 
 export class WorkflowOrchestrator {
     private nexuses: Nexus[];
@@ -51,17 +53,78 @@ export class WorkflowOrchestrator {
     }
 
     /**
-     * Fix: Added validate method to ensure graph integrity before execution.
+     * STRUCTURE GUARD:
+     * Validates the workflow topology without throwing errors.
+     * Returns a categorized list of issues.
      */
-    public validate(): { isValid: boolean; error?: string } {
-        const hasTrigger = this.nexuses.some(n => n.type === NexusType.TRIGGER);
-        if (!hasTrigger) return { isValid: false, error: "Workflow is missing a Trigger node." };
-        
-        if (this.nexuses.length > 1 && this.synapses.length === 0) {
-            return { isValid: false, error: "Nodes must be connected to form a valid flow." };
+    public validate(): { valid: boolean; warnings: FlowWarning[] } {
+        const warnings: FlowWarning[] = [];
+        const nodeIds = new Set(this.nexuses.map(n => n.id));
+
+        // 1. Check for Empty Canvas
+        if (this.nexuses.length === 0) {
+            warnings.push({
+                level: 'INFO',
+                message: 'Canvas is empty. Add nodes to start building.'
+            });
+            return { valid: false, warnings }; // Technically valid empty state, but not runnable
         }
+
+        // 2. Check for Trigger (Critical)
+        const hasTrigger = this.nexuses.some(n => n.type === NexusType.TRIGGER);
+        if (!hasTrigger) {
+            warnings.push({
+                level: 'ERROR',
+                message: 'Workflow missing a Trigger node. Logic cannot start.'
+            });
+        }
+
+        // 3. Check for Orphan Edges (Data Integrity)
+        this.synapses.forEach(s => {
+            if (!nodeIds.has(s.sourceId) || !nodeIds.has(s.targetId)) {
+                warnings.push({
+                    level: 'ERROR',
+                    message: 'Corrupt connection detected (phantom edge). Save & Reload recommended.'
+                });
+            }
+        });
+
+        // 4. Check for Disconnected Nodes (Unreachable Logic)
+        if (this.nexuses.length > 1) {
+            const connectedIds = new Set<string>();
+            this.synapses.forEach(s => { 
+                if (nodeIds.has(s.sourceId) && nodeIds.has(s.targetId)) {
+                    connectedIds.add(s.sourceId); 
+                    connectedIds.add(s.targetId); 
+                }
+            });
+            
+            this.nexuses.forEach(n => {
+                if (n.type !== NexusType.TRIGGER && !connectedIds.has(n.id)) {
+                    warnings.push({
+                        level: 'WARNING',
+                        message: `Node "${n.label}" is disconnected and will not run.`,
+                        nodeId: n.id
+                    });
+                }
+            });
+        }
+
+        // 5. Single Node Warning
+        if (this.nexuses.length === 1 && hasTrigger) {
+            warnings.push({
+                level: 'WARNING',
+                message: 'Single node workflow. Connect an Action to do something useful.'
+            });
+        }
+
+        // Blocking if any ERROR level warnings exist
+        const hasCriticalErrors = warnings.some(w => w.level === 'ERROR');
         
-        return { isValid: true };
+        return { 
+            valid: !hasCriticalErrors, 
+            warnings 
+        };
     }
 
     private async saveCheckpoint() {
@@ -73,10 +136,14 @@ export class WorkflowOrchestrator {
         }
     }
 
+    // SANITIZATION: Prevents JS errors with special chars in node names
+    private getSafeContextKey(label: string): string {
+        return (label || 'node').replace(/[^a-zA-Z0-9_]/g, '_');
+    }
+
     public async start(payload: any): Promise<ExecutionResult> {
         this.logger(`[Shield] Initializing Guarded Runtime ${this.state.runId}...`, "INFO");
         
-        // 1. DAILY QUOTA CHECK (BILL PROTECTION)
         const quota = await updateDailyUsage(this.state.userId);
         if (!quota.allowed) {
             this.logger("CRITICAL: Daily Execution Quota Exceeded. Upgrade to Business Plan.", "ERROR");
@@ -87,14 +154,20 @@ export class WorkflowOrchestrator {
             this.state.status = 'RUNNING';
             this.state.context['trigger'] = { data: payload };
             const trigger = this.nexuses.find(n => n.type === NexusType.TRIGGER);
-            if(trigger) this.state.currentQueue = [trigger.id];
+            if(trigger) {
+                this.state.currentQueue = [trigger.id];
+                const safeLabel = this.getSafeContextKey(trigger.label);
+                this.state.context[safeLabel] = { data: payload };
+            }
         }
 
         const startTime = Date.now();
         await this.saveCheckpoint();
 
         while (this.state.currentQueue.length > 0) {
-            // 2. TIMEOUT GUARD
+            // CRITICAL: Allow UI to breathe
+            await yieldToMain();
+
             if (Date.now() - startTime > EXECUTION_TIMEOUT_MS) {
                 this.logger("FATAL: Execution Timeout (60s). Prevented Zombie Process.", "ERROR");
                 this.state.status = 'FAILED';
@@ -102,7 +175,6 @@ export class WorkflowOrchestrator {
                 return { status: 'ABORTED', executionId: this.state.runId, duration: Date.now() - startTime, output: null, logs: [], telemetry: [] };
             }
 
-            // 3. MAX STEP GUARD
             if (this.state.completedNodeIds.length > MAX_STEPS_PER_RUN) {
                 this.logger("FATAL: Max Step Count (50) reached. Potential Infinite Loop.", "ERROR");
                 this.state.status = 'FAILED';
@@ -114,7 +186,6 @@ export class WorkflowOrchestrator {
             const node = this.nexuses.find(n => n.id === nodeId);
             if(!node) continue;
 
-            // 4. NODE REPEAT GUARD (ANTI-RECURSION)
             const count = (this.nodeExecutionCounts.get(nodeId) || 0) + 1;
             if (count > MAX_REPEATS_PER_NODE) {
                 this.logger(`FATAL: Cyclic Loop detected at node [${node.label}]. Aborting.`, "ERROR", node.id);
@@ -126,11 +197,14 @@ export class WorkflowOrchestrator {
 
             try {
                 this.logger(`[Node] Executing ${node.label}...`, "INFO", node.id);
-                await new Promise(r => setTimeout(r, 600)); // Kernel Overhead
+                
+                // Simulate Work (Replace with actual execution logic)
+                await new Promise(r => setTimeout(r, 600)); 
                 
                 const out = { success: true, timestamp: Date.now() };
                 this.state.completedNodeIds.push(nodeId);
-                const contextKey = node.label.replace(/\s+/g, '_');
+                
+                const contextKey = this.getSafeContextKey(node.label);
                 this.state.context[contextKey] = { data: out };
 
                 const nextEdges = this.synapses.filter(s => s.sourceId === nodeId);

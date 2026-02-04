@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Canvas from './components/Canvas';
 import PropertiesPanel from './components/PropertiesPanel';
@@ -9,28 +9,155 @@ import NodeRegistry from './components/NodeRegistry';
 import RoadmapModal from './components/RoadmapModal';
 import ProjectList from './components/ProjectList';
 import NexusMascot from './components/NexusMascot';
-import { Nexus, Synapse, Project, ExecutionState } from './types';
-import { Play, Cloud, CheckCircle2, RotateCcw, Activity, Info, ShieldCheck } from 'lucide-react';
+import CredentialManager from './components/CredentialManager';
+import PricingModal from './components/PricingModal';
+import OnboardingModal from './components/OnboardingModal'; 
+import LandingPage from './components/LandingPage';
+import AuthPage from './components/AuthPage'; 
+import VideoModal from './components/VideoModal';
+import { SettingsModal } from './components/SettingsModal'; // New Import
+import { Nexus, Synapse, Project, ExecutionState, NexusType, NexusSubtype, PlanTier, UserPlan } from './types';
+import { Play, Cloud, ShieldCheck, Info, Activity, AlertCircle, CheckCircle2, Save, AlertTriangle, Lock } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { subscribeToProjects, updateProject, createProject, deleteProject } from './services/projectService';
+import { listPromos } from './services/adminService'; 
+import { DEFAULT_NODE_SETTINGS, PLAN_LIMITS } from './constants';
+
+// --- DATA SANITIZATION UTILITIES ---
+const sanitizeNodes = (nodes: any[]): Nexus[] => {
+    if (!Array.isArray(nodes)) return [];
+    
+    const seenIds = new Set<string>();
+    const timestamp = Date.now();
+
+    return nodes.map((n, i) => {
+        let id = n.id;
+        if (!id || seenIds.has(id)) {
+            id = `gen_node_${timestamp}_${i}_${Math.random().toString(36).substr(2, 5)}`;
+        }
+        seenIds.add(id);
+
+        let posX = Number.isFinite(n.position?.x) ? n.position.x : 0;
+        let posY = Number.isFinite(n.position?.y) ? n.position.y : 0;
+
+        return {
+            id: id,
+            type: n.type || NexusType.ACTION,
+            subtype: n.subtype || NexusSubtype.NO_OP,
+            label: n.label || 'Untitled Node',
+            position: { x: posX, y: posY },
+            config: n.config || {},
+            settings: n.settings || DEFAULT_NODE_SETTINGS,
+            status: 'idle' as const
+        };
+    }).filter(n => n);
+};
+
+const sanitizeSynapses = (synapses: any[], validNodeIds: Set<string>): Synapse[] => {
+    if (!Array.isArray(synapses)) return [];
+    const seenConnections = new Set<string>();
+
+    return synapses.filter(s => {
+        if (!s.sourceId || !s.targetId) return false;
+        if (!validNodeIds.has(s.sourceId) || !validNodeIds.has(s.targetId)) return false;
+        const key = `${s.sourceId}-${s.targetId}`;
+        if (seenConnections.has(key)) return false;
+        seenConnections.add(key);
+        return true;
+    }).map((s, i) => ({
+        id: s.id || `syn-${Date.now()}-${i}`,
+        sourceId: s.sourceId,
+        targetId: s.targetId,
+        sourceHandle: s.sourceHandle || 'default'
+    }));
+};
 
 const AppContent: React.FC = () => {
   const { user } = useAuth();
+  
+  // ROUTING STATE: 'landing' | 'auth' | 'app'
+  const [appRoute, setAppRoute] = useState<'landing' | 'auth' | 'app'>('landing');
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
+
   const [currentView, setCurrentView] = useState<'dashboard' | 'editor'>('dashboard');
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  
+  // CORE STATE
   const [nexuses, setNexuses] = useState<Nexus[]>([]);
   const [synapses, setSynapses] = useState<Synapse[]>([]);
+  const [userPlan, setUserPlan] = useState<PlanTier>('FREE');
+  const [fullPlan, setFullPlan] = useState<UserPlan | null>(null); // Full plan object for settings
+  
+  // UI TOGGLES
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isRunModalOpen, setIsRunModalOpen] = useState(false);
   const [isRegistryOpen, setIsRegistryOpen] = useState(false);
   const [isRoadmapOpen, setIsRoadmapOpen] = useState(false);
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
+  const [isCredentialManagerOpen, setIsCredentialManagerOpen] = useState(false);
+  const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
+  const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false); // New Settings Toggle
+  
+  // DEMO STATE
+  const [isDemoOpen, setIsDemoOpen] = useState(false);
+
   const [syncStatus, setSyncStatus] = useState<'synced' | 'dirty' | 'saving'>('synced');
   const [interruptedState, setInterruptedState] = useState<ExecutionState | null>(null);
+  const lastSaveRef = useRef<number>(0);
 
-  // Persistence Engine: Check for interrupted runs on app boot
+  // --- ROUTING LOGIC ---
   useEffect(() => {
+      if (user) {
+          setAppRoute('app');
+          const hasOnboarded = localStorage.getItem('nexus_onboarding_complete');
+          if (!hasOnboarded) {
+              setIsOnboardingOpen(true);
+          }
+          listPromos(); 
+      } else {
+          // Keep current route unless it was 'app' (logout scenario)
+          if (appRoute === 'app') setAppRoute('landing');
+      }
+  }, [user]);
+
+  const handleNavigate = (route: 'signup' | 'login') => {
+      setAuthMode(route);
+      setAppRoute('auth');
+  };
+
+  const handleBackToLanding = () => {
+      setAppRoute('landing');
+  };
+
+  const completeOnboarding = () => {
+      localStorage.setItem('nexus_onboarding_complete', 'true');
+      setIsOnboardingOpen(false);
+  };
+
+  // Rehydrate Plan from LocalStorage on mount (fallback)
+  useEffect(() => {
+    const storedPlan = localStorage.getItem('nexus_user_plan');
+    if (storedPlan) {
+        // In real app, this is fetched from DB. Here we mock a full object if only string exists.
+        setUserPlan(storedPlan as PlanTier);
+        setFullPlan({ 
+            uid: user?.uid || 'anon', 
+            email: user?.email || 'anon', 
+            tier: storedPlan as PlanTier, 
+            region: 'GLOBAL', 
+            role: 'USER', 
+            status: 'active', 
+            expiresAt: Date.now() + 10000000, 
+            updatedAt: Date.now(), 
+            autoRenew: true, 
+            credits: 5, 
+            monthlyLimit: 5 
+        });
+    }
+
     const saved = localStorage.getItem('nexus_interrupted_execution');
     if (saved) {
       try {
@@ -38,56 +165,203 @@ const AppContent: React.FC = () => {
         if (state.status === 'RUNNING') setInterruptedState(state);
       } catch (e) {}
     }
-  }, []);
+  }, [user]);
 
-  const handleResume = () => {
-    setIsRunModalOpen(true);
+  // --- RENDER GATES ---
+  if (!user && appRoute === 'landing') {
+      return (
+        <>
+            <LandingPage onNavigate={handleNavigate} onDemo={() => setIsDemoOpen(true)} />
+            <VideoModal isOpen={isDemoOpen} onClose={() => setIsDemoOpen(false)} />
+        </>
+      );
+  }
+
+  if (!user && appRoute === 'auth') {
+      return <AuthPage view={authMode} onBack={handleBackToLanding} />;
+  }
+
+  // APP LOGIC BELOW (Only rendered if user is logged in)
+
+  const handleUpgrade = (newPlan: any) => {
+      setUserPlan(newPlan.tier);
+      setFullPlan(newPlan); // Store full plan object
+      localStorage.setItem('nexus_user_plan', newPlan.tier);
+      setIsPricingModalOpen(false);
   };
 
-  const handleDiscardResume = () => {
-    localStorage.removeItem('nexus_interrupted_execution');
-    setInterruptedState(null);
-  };
+  // --- AUTO-SAVE ---
+  useEffect(() => {
+    if (!currentProject || currentView !== 'editor') return;
+    if (syncStatus === 'saving') return;
 
-  // Sync Projects from Cloud/LocalDB
+    const timeoutId = setTimeout(() => {
+        const draftKey = `nexus_draft_${currentProject.id}`;
+        const draftData = {
+            id: currentProject.id,
+            nexuses,
+            synapses,
+            timestamp: Date.now()
+        };
+        localStorage.setItem(draftKey, JSON.stringify(draftData));
+        if (syncStatus === 'synced') setSyncStatus('dirty');
+    }, 800);
+
+    return () => clearTimeout(timeoutId);
+  }, [nexuses, synapses, currentProject, currentView, syncStatus]);
+
+  useEffect(() => {
+      const lastProjectId = localStorage.getItem('nexus_last_project_id');
+      const lastView = localStorage.getItem('nexus_last_view');
+      
+      if (lastProjectId && projects.length > 0) {
+          if (currentProject?.id === lastProjectId) return; 
+          const found = projects.find(p => p.id === lastProjectId);
+          if (found) {
+              handleOpenProject(found);
+              if (lastView === 'editor') setCurrentView('editor');
+          }
+      }
+  }, [projects, currentProject]); 
+
+  const handleResume = () => { setIsRunModalOpen(true); };
+  const handleDiscardResume = () => { localStorage.removeItem('nexus_interrupted_execution'); setInterruptedState(null); };
+
   useEffect(() => {
     if (user) {
-      const unsub = subscribeToProjects(user.uid, (data) => {
-          setProjects(data);
-      });
+      const unsub = subscribeToProjects(user.uid, (data) => setProjects(data));
       return () => unsub();
     }
   }, [user]);
 
   const handleCreateNewProject = async (title: string, desc: string) => {
+      if (projects.length >= PLAN_LIMITS[userPlan].PROJECTS) {
+          setIsPricingModalOpen(true);
+          return;
+      }
       const newP = await createProject({ title, description: desc });
       handleOpenProject(newP);
   };
 
   const handleOpenProject = (p: Project) => {
+    const draftKey = `nexus_draft_${p.id}`;
+    const draftRaw = localStorage.getItem(draftKey);
+    let nodesToLoad = p.nexuses || [];
+    let edgesToLoad = p.synapses || [];
+    let isDraftNewer = false;
+
+    if (draftRaw) {
+        try {
+            const draft = JSON.parse(draftRaw);
+            const cloudTime = p.updatedAt || 0;
+            if (draft.timestamp > cloudTime) {
+                nodesToLoad = draft.nexuses;
+                edgesToLoad = draft.synapses;
+                isDraftNewer = true;
+            }
+        } catch (e) {}
+    }
+
+    const cleanNodes = sanitizeNodes(nodesToLoad);
+    const nodeIds = new Set(cleanNodes.map(n => n.id));
+    const cleanSynapses = sanitizeSynapses(edgesToLoad, nodeIds);
+    
     setCurrentProject(p);
-    setNexuses(p.nexuses || []);
-    setSynapses(p.synapses || []);
+    setNexuses(cleanNodes);
+    setSynapses(cleanSynapses);
+    setSyncStatus(isDraftNewer ? 'dirty' : 'synced');
     setCurrentView('editor');
+    localStorage.setItem('nexus_last_project_id', p.id);
+    localStorage.setItem('nexus_last_view', 'editor');
   };
 
   const handleDeleteProject = async (id: string) => {
       if(window.confirm("Are you sure? This will delete the workflow forever.")) {
           await deleteProject(id);
+          localStorage.removeItem(`nexus_draft_${id}`);
       }
   };
 
-  const handleSave = async () => {
-    if (!currentProject) return;
-    setSyncStatus('saving');
-    await updateProject(currentProject.id, { nexuses, synapses });
-    setSyncStatus('synced');
+  const handleNavigateDashboard = () => {
+      setCurrentView('dashboard');
+      localStorage.setItem('nexus_last_view', 'dashboard');
+  };
+
+  const handleNexusPositionUpdate = useCallback((id: string, x: number, y: number) => {
+      setNexuses(prev => prev.map(n => n.id === id ? { ...n, position: { x, y } } : n));
+  }, []);
+
+  const handleNexusUpdate = useCallback((id: string, up: Partial<Nexus>) => {
+      setNexuses(prev => prev.map(n => n.id === id ? { ...n, ...up } : n));
+  }, []);
+
+  const handleAddSynapse = useCallback((s: string, t: string, h?: string) => {
+      setSynapses(prev => {
+          if(prev.some(syn => syn.sourceId === s && syn.targetId === t)) return prev;
+          return [...prev, { id: `syn-${Date.now()}`, sourceId: s, targetId: t, sourceHandle: h }];
+      });
+  }, []);
+
+  const handleDeleteSynapse = useCallback((id: string) => {
+      setSynapses(prev => prev.filter(s => s.id !== id));
+  }, []);
+
+  const handleDeleteNexus = useCallback((id: string) => {
+      if (!window.confirm("Delete this node?")) return;
+      setNexuses(prev => prev.filter(n => n.id !== id));
+      setSynapses(prev => prev.filter(s => s.sourceId !== id && s.targetId !== id));
+      setSelectedId(null);
+      setIsPropertiesOpen(false);
+  }, []);
+
+  const handleAddNexus = useCallback((type: NexusType, subtype: NexusSubtype, dropPosition?: { x: number, y: number }) => {
+      const id = `n-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+      setNexuses(prev => {
+          let safeX = 100;
+          let safeY = 300 + (prev.length % 5 * 20);
+          if (dropPosition) { safeX = dropPosition.x; safeY = dropPosition.y; }
+          else {
+              const max = Math.max(...prev.map(n => n.position?.x || 0));
+              if (Number.isFinite(max)) safeX = max + 300;
+          }
+          const newNode: Nexus = { 
+              id, type, subtype, label: `New ${subtype}`, 
+              position: { x: safeX, y: safeY }, config: {}, settings: DEFAULT_NODE_SETTINGS, status: 'idle' 
+          };
+          return [...prev, newNode];
+      });
+      setSelectedId(id);
+      setIsPropertiesOpen(true);
+  }, [selectedId]);
+
+  const handleApplyStream = (newNexuses: Nexus[], newSynapses: Synapse[]) => {
+      const cleanNodes = sanitizeNodes(newNexuses).map((n, i) => {
+          if (!n.position || (n.position.x === 0 && n.position.y === 0)) {
+              return { ...n, position: { x: 300 + (i * 350), y: 300 } };
+          }
+          return n;
+      });
+      setNexuses(cleanNodes);
+      setSynapses(sanitizeSynapses(newSynapses, new Set(cleanNodes.map(n => n.id))));
   };
 
   return (
     <div className="flex h-screen bg-[#050505] text-white overflow-hidden relative">
+      <PricingModal isOpen={isPricingModalOpen} onClose={() => setIsPricingModalOpen(false)} onUpgrade={handleUpgrade} />
       
-      {/* FLOATING RESUME PROTOCOL */}
+      {/* ONBOARDING MODAL */}
+      {isOnboardingOpen && (
+          <OnboardingModal onClose={completeOnboarding} onOpenAI={() => setIsAIAssistantOpen(true)} />
+      )}
+
+      {/* SETTINGS MODAL */}
+      <SettingsModal 
+          isOpen={isSettingsOpen} 
+          onClose={() => setIsSettingsOpen(false)} 
+          onUpgrade={() => setIsPricingModalOpen(true)}
+          userPlan={fullPlan || { tier: 'FREE', autoRenew: true }}
+      />
+
       {interruptedState && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[250] w-full max-w-md animate-in slide-in-from-bottom-4">
           <div className="bg-[#0f172a] border border-blue-500/40 rounded-3xl p-5 shadow-[0_0_50px_rgba(37,99,235,0.2)] flex items-center justify-between gap-5 backdrop-blur-xl">
@@ -111,137 +385,103 @@ const AppContent: React.FC = () => {
       <Sidebar 
         isOpen={true} 
         onClose={() => {}} 
-        onAddNexus={(type, subtype) => {
-            const id = `n-${Date.now()}`;
-            setNexuses([...nexuses, { id, type, subtype, label: `New ${subtype}`, position: { x: 400, y: 300 }, config: {}, status: 'idle' }]);
-            setSelectedId(id);
-            setIsPropertiesOpen(true);
-            setSyncStatus('dirty');
-        }}
-        onLoadBlueprint={(bp) => { 
-            setNexuses(bp.nexuses); 
-            setSynapses(bp.synapses); 
-            setSyncStatus('dirty');
-        }}
-        onClear={() => { setNexuses([]); setSynapses([]); setSyncStatus('dirty'); }}
-        onOpenSettings={() => {}}
-        onNavigateProjects={() => setCurrentView('dashboard')}
+        onAddNexus={handleAddNexus}
+        onLoadBlueprint={(bp) => handleApplyStream(bp.nexuses, bp.synapses)}
+        onClear={() => { setNexuses([]); setSynapses([]); }}
+        onOpenSettings={() => setIsSettingsOpen(true)} // Wire up settings
+        onNavigateProjects={handleNavigateDashboard}
         currentView={currentView}
+        onOpenCredentials={() => setIsCredentialManagerOpen(true)}
         onOpenRegistry={() => setIsRegistryOpen(true)}
+        onOpenAI={() => setIsAIAssistantOpen(true)}
       />
 
       <div className="flex-1 flex flex-col relative h-full">
-        {/* TOP BAR */}
         <div className="h-14 bg-nexus-950/90 border-b border-nexus-800 flex items-center justify-between px-6 z-20">
           <div className="flex items-center gap-4">
             <h1 className="font-black text-xs uppercase tracking-widest text-gray-400">
                {currentView === 'dashboard' ? 'SYS_WORKSPACE' : currentProject?.title}
             </h1>
             {currentView === 'editor' && (
-              <div className="flex items-center gap-1.5">
-                <ShieldCheck size={10} className={syncStatus === 'synced' ? 'text-nexus-success' : 'text-nexus-wire'} />
-                <span className="text-[8px] font-black text-gray-600 uppercase tracking-widest">{syncStatus === 'synced' ? 'ENCRYPTED_SYNC' : 'DIRTY_STATE (CTRL+S)'}</span>
+              <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${syncStatus === 'synced' ? 'border-green-500/30 bg-green-500/10 text-green-400' : 'border-yellow-500/30 bg-yellow-500/10 text-yellow-500'}`}>
+                  {syncStatus === 'synced' ? <CheckCircle2 size={12}/> : <Activity size={12} className="animate-spin"/>}
+                  <span className="text-[10px] font-black uppercase">{syncStatus === 'synced' ? 'Synced' : 'Saving...'}</span>
               </div>
             )}
           </div>
-
-          <div className="flex items-center gap-3">
-             <button onClick={() => setIsRoadmapOpen(true)} className="p-2.5 text-gray-500 hover:text-nexus-accent hover:bg-white/5 rounded-xl transition-all" title="System Capabilities">
-                <Info size={18} />
-             </button>
-             {currentView === 'editor' && (
-               <>
-                 <button onClick={handleSave} className="px-4 py-1.5 bg-nexus-900 border border-nexus-800 text-gray-400 rounded-lg text-[9px] font-black uppercase hover:text-white transition-all">
-                    <Cloud size={14} className="inline mr-2" /> Push State
-                 </button>
-                 <button onClick={() => setIsRunModalOpen(true)} className="px-5 py-1.5 bg-nexus-accent text-black rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg">
-                    <Play size={14} fill="currentColor" /> Start Pulse
-                 </button>
-               </>
-             )}
+          <div className="flex items-center gap-2">
+             {/* Additional Header Controls if any */}
           </div>
         </div>
 
-        <div className="flex-1 relative overflow-hidden">
-          {currentView === 'dashboard' ? (
+        {currentView === 'dashboard' ? (
             <ProjectList 
-                projects={projects} 
-                onCreateProject={handleCreateNewProject} 
-                onOpenProject={handleOpenProject} 
-                onDeleteProject={handleDeleteProject} 
+                projects={projects}
+                onCreateProject={handleCreateNewProject}
+                onOpenProject={handleOpenProject}
+                onDeleteProject={handleDeleteProject}
+                userPlan={userPlan}
+                onUpgrade={() => setIsPricingModalOpen(true)}
             />
-          ) : (
-            <>
+        ) : (
+            <div className="flex-1 relative overflow-hidden">
                 <Canvas 
-                  nexuses={nexuses} synapses={synapses} selectedId={selectedId}
-                  onSelectNexus={setSelectedId}
-                  onUpdateNexusPosition={(id, x, y) => {
-                      setNexuses(prev => prev.map(n => n.id === id ? { ...n, position: { x, y } } : n));
-                      setSyncStatus('dirty');
-                  }}
-                  onAddSynapse={(s, t, h) => {
-                      setSynapses(prev => [...prev, { id: `syn-${Date.now()}`, sourceId: s, targetId: t, sourceHandle: h }]);
-                      setSyncStatus('dirty');
-                  }}
-                  onDeleteSynapse={(id) => {
-                      setSynapses(prev => prev.filter(s => s.id !== id));
-                      setSyncStatus('dirty');
-                  }}
-                  onOpenProperties={() => setIsPropertiesOpen(true)}
-                  onNexusUpdate={(id, up) => {
-                      setNexuses(prev => prev.map(n => n.id === id ? { ...n, ...up } : n));
-                      setSyncStatus('dirty');
-                  }}
+                    nexuses={nexuses}
+                    synapses={synapses}
+                    selectedId={selectedId}
+                    onSelectNexus={(id) => { setSelectedId(id); if(id) setIsPropertiesOpen(true); }}
+                    onUpdateNexusPosition={handleNexusPositionUpdate}
+                    onAddSynapse={handleAddSynapse}
+                    onDeleteSynapse={handleDeleteSynapse}
+                    onOpenProperties={(id) => { setSelectedId(id); setIsPropertiesOpen(true); }}
+                    onNexusUpdate={handleNexusUpdate}
+                    onNodeAction={(action, id) => {
+                        if (action === 'DELETE') handleDeleteNexus(id);
+                        if (action === 'RUN') { /* run logic */ }
+                        // ... other actions
+                    }}
+                    onAddNexus={handleAddNexus}
                 />
                 
                 {isPropertiesOpen && (
                     <PropertiesPanel 
-                        nexus={nexuses.find(n => n.id === selectedId) || null} 
-                        onClose={() => setIsPropertiesOpen(false)}
-                        onUpdate={(id, up) => {
-                            setNexuses(prev => prev.map(n => n.id === id ? { ...n, ...up } : n));
-                            setSyncStatus('dirty');
-                        }}
-                        onDelete={(id) => {
-                            setNexuses(prev => prev.filter(n => n.id !== id));
-                            setSynapses(prev => prev.filter(s => s.sourceId !== id && s.targetId !== id));
-                            setSelectedId(null);
-                            setIsPropertiesOpen(false);
-                            setSyncStatus('dirty');
-                        }}
+                        nexus={nexuses.find(n => n.id === selectedId) || null}
+                        onClose={() => { setIsPropertiesOpen(false); setSelectedId(null); }}
+                        onUpdate={handleNexusUpdate}
+                        onDelete={handleDeleteNexus}
+                        credentials={[]} // Pass credentials if available
+                        onTest={() => setIsRunModalOpen(true)} // Or specific node test
                     />
                 )}
-            </>
-          )}
-        </div>
+            </div>
+        )}
+
+        {/* --- GLOBAL MODALS --- */}
+        <RunModal 
+            isOpen={isRunModalOpen}
+            onClose={() => setIsRunModalOpen(false)}
+            nexuses={nexuses}
+            synapses={synapses}
+            resumeState={interruptedState}
+        />
+        
+        <NodeRegistry isOpen={isRegistryOpen} onClose={() => setIsRegistryOpen(false)} />
+        <RoadmapModal isOpen={isRoadmapOpen} onClose={() => setIsRoadmapOpen(false)} />
+        <CredentialManager isOpen={isCredentialManagerOpen} onClose={() => setIsCredentialManagerOpen(false)} onUpdate={() => {}} />
+        <AIAssistant 
+            isOpen={isAIAssistantOpen}
+            onClose={() => setIsAIAssistantOpen(false)}
+            onApplyStream={handleApplyStream}
+            currentNexuses={nexuses}
+            currentSynapses={synapses}
+            projectContext={currentProject?.description}
+            userPlan={userPlan}
+            onUpgrade={() => setIsPricingModalOpen(true)}
+        />
+
       </div>
-
-      <AIAssistant 
-        isOpen={false} onClose={() => {}} 
-        onApplyStream={(n, s) => { 
-            setNexuses(n); 
-            setSynapses(s); 
-            setSyncStatus('dirty');
-        }}
-        currentNexuses={nexuses} currentSynapses={synapses}
-      />
-
-      <NodeRegistry isOpen={isRegistryOpen} onClose={() => setIsRegistryOpen(false)} />
-      <RoadmapModal isOpen={isRoadmapOpen} onClose={() => setIsRoadmapOpen(false)} />
-      <RunModal 
-        isOpen={isRunModalOpen} 
-        onClose={() => { setIsRunModalOpen(false); setInterruptedState(null); }} 
-        nexuses={nexuses} synapses={synapses} 
-        resumeState={interruptedState}
-      />
     </div>
   );
 };
 
-const App: React.FC = () => (
-  <AuthProvider>
-    <AppContent />
-  </AuthProvider>
-);
-
-export default App;
+export default AppContent;

@@ -1,9 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, Send, X, Loader2, Zap, Brain, Terminal, ShieldCheck, ArrowRight, Paperclip, AlertTriangle, CheckCircle, Activity, Layout, GitMerge, Cpu } from 'lucide-react';
-import { chatWithArchitect } from '../services/geminiService';
-import { Nexus, Synapse, ChatMessage } from '../types';
+import { Sparkles, Send, X, Loader2, Brain, CheckCircle, Layout, GitMerge, Cpu, ShieldCheck, ArrowRight, Activity, Terminal, BookOpen, Zap, AlertTriangle, Lock, Crown } from 'lucide-react';
+import { chatWithArchitect, analyzeWorkflow } from '../services/geminiService';
+import { Nexus, Synapse, ChatMessage, PlanTier } from '../types';
 import { ArchitectResponse, Decision } from '../services/architect/types';
+import { saveArchitectMemory } from '../services/cloudStore';
+import { PLAN_LIMITS } from '../constants';
 
 interface AIAssistantProps {
   isOpen: boolean;
@@ -12,31 +14,40 @@ interface AIAssistantProps {
   currentNexuses: Nexus[];
   currentSynapses: Synapse[];
   projectContext?: string;
+  userPlan?: PlanTier; // Injected from App
+  onUpgrade?: () => void;
 }
 
 const AIAssistant: React.FC<AIAssistantProps> = ({ 
-  isOpen, onClose, onApplyStream, currentNexuses, currentSynapses, projectContext = "New Workflow"
+  isOpen, onClose, onApplyStream, currentNexuses, currentSynapses, projectContext = "New Workflow", userPlan = 'FREE', onUpgrade
 }) => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pendingChanges, setPendingChanges] = useState<ArchitectResponse | null>(null);
   const [thinkingStep, setThinkingStep] = useState<string>('');
+  const [promptCount, setPromptCount] = useState(0);
   
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // --- 1. TRACK USAGE (PERSISTENT) ---
+  useEffect(() => {
+      const stored = localStorage.getItem('nexus_ai_usage');
+      if (stored) setPromptCount(parseInt(stored));
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, thinkingStep]);
+  }, [messages, thinkingStep, pendingChanges]);
 
   useEffect(() => {
       if (isOpen && messages.length === 0) {
           setMessages([{
               id: 'init',
               role: 'assistant',
-              content: `**Architect Prime Online.**\nConnected to project context: _${projectContext}_\n\nDescribe your automation goal, and I will construct the pipeline.`,
+              content: `**NexusStream Architect Prime Online.**\n\nI am ready to synthesize your automation stack. Describe your goal in natural language (e.g., "Build a lead scraper that saves to Sheets and alerts Slack").`,
               timestamp: Date.now()
           }]);
       }
@@ -44,7 +55,19 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() || isLoading) return;
+
+    // --- PLAN ENFORCEMENT: CHECK LIMIT ---
+    const limit = PLAN_LIMITS[userPlan].AI_PROMPTS;
+    if (promptCount >= limit) {
+        setMessages(prev => [...prev, { 
+            id: Date.now().toString(), 
+            role: 'system', 
+            content: `🔒 **Free Plan Limit Reached.**\n\nYou’ve used all ${limit} free AI prompts.\nUpgrade to Pro to continue designing workflows with AI.`, 
+            timestamp: Date.now() 
+        }]);
+        return;
+    }
 
     const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', content: input, timestamp: Date.now() };
     setMessages(prev => [...prev, userMsg]);
@@ -52,20 +75,25 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     setIsLoading(true);
     setPendingChanges(null);
 
-    // Visual Thinking Sequence
+    // Increment Usage
+    const nextCount = promptCount + 1;
+    setPromptCount(nextCount);
+    localStorage.setItem('nexus_ai_usage', nextCount.toString());
+
     const steps = [
-        "Parsing Intent...", 
-        "Analyzing Graph Topology...", 
-        "Selecting Optimal Nodes...", 
-        "Mapping Data Variables...",
-        "Validating Logic Integrity..."
+        "Synthesizing Requirements...", 
+        "Architecting Graph Topology...", 
+        "Injecting Safety Guards...", 
+        "Mapping Neural Variables...",
+        "Final Logic Validation..."
     ];
     let stepIdx = 0;
     const interval = setInterval(() => {
         if(stepIdx < steps.length) setThinkingStep(steps[stepIdx++]);
-    }, 1200);
+    }, 1500);
 
     try {
+      // System API Key is empty as it pulls from process.env.API_KEY internally
       const result = await chatWithArchitect(userMsg.content, messages, "", currentNexuses, currentSynapses, projectContext);
       
       clearInterval(interval);
@@ -79,123 +107,196 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           metadata: result 
       }]);
 
-      if (result.patch || result.fullBlueprint) {
+      // Only show Apply button if VALID changes exist
+      if ((result.patch || result.fullBlueprint) && !result.validationError) {
           setPendingChanges(result);
+      } else if (result.validationError) {
+          // Log specific validation error to UI for transparency
+          setMessages(prev => [...prev, {
+              id: Date.now().toString(),
+              role: 'system',
+              content: `🔒 **Safety Guard**: Changes rejected due to: ${result.validationError}. State protected.`,
+              timestamp: Date.now()
+          }]);
       }
 
     } catch (err: any) {
       clearInterval(interval);
       setThinkingStep('');
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', content: "Architect Error: " + err.message, timestamp: Date.now() }]);
+      // This catch block handles network-level errors not caught by the architect wrapper
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', content: `CRITICAL FAULT: ${err.message}. Connection reset.`, timestamp: Date.now() }]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleApply = () => {
-      if (!pendingChanges) return;
-      
-      if (pendingChanges.fullBlueprint) {
-          onApplyStream(pendingChanges.fullBlueprint.nexuses, pendingChanges.fullBlueprint.synapses);
-      } 
-      else if (pendingChanges.patch) {
-          let newNodes = [...currentNexuses];
-          let newSynapses = [...currentSynapses];
-          const p = pendingChanges.patch;
-          
-          if(p.removeNodeIds) newNodes = newNodes.filter(n => !p.removeNodeIds.includes(n.id));
-          if(p.removeConnectionIds) newSynapses = newSynapses.filter(c => !p.removeConnectionIds.includes(c.id));
+  const handleAnalysis = async (intent: 'VALIDATE' | 'EXPLAIN' | 'OPTIMIZE') => {
+      // Analysis also counts towards usage
+      const limit = PLAN_LIMITS[userPlan].AI_PROMPTS;
+      if (promptCount >= limit) {
+          setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', content: `🔒 Limit Reached. Upgrade to run analysis.`, timestamp: Date.now() }]);
+          return;
+      }
 
-          if(p.updateNodes) {
-              newNodes = newNodes.map(n => {
-                  const update = p.updateNodes.find(u => u.id === n.id);
-                  return update ? { ...n, ...update } as Nexus : n;
-              });
+      if (isLoading) return;
+      setIsLoading(true);
+      setThinkingStep(`Running ${intent.toLowerCase()} analysis protocol...`);
+      
+      // Increment Usage
+      const nextCount = promptCount + 1;
+      setPromptCount(nextCount);
+      localStorage.setItem('nexus_ai_usage', nextCount.toString());
+
+      try {
+          // Fake a user message for context
+          const labels = { 'VALIDATE': 'Run QA Check', 'EXPLAIN': 'Explain this flow', 'OPTIMIZE': 'Optimize Logic' };
+          const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', content: `[SYSTEM COMMAND]: ${labels[intent]}`, timestamp: Date.now() };
+          setMessages(prev => [...prev, userMsg]);
+
+          const resultText = await analyzeWorkflow(intent, currentNexuses, currentSynapses);
+          
+          setMessages(prev => [...prev, {
+              id: Date.now().toString(),
+              role: 'assistant',
+              content: resultText,
+              timestamp: Date.now()
+          }]);
+      } catch (e: any) {
+          setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', content: "Analysis Failed: " + e.message, timestamp: Date.now() }]);
+      } finally {
+          setIsLoading(false);
+          setThinkingStep('');
+      }
+  };
+
+  const handleApply = async () => {
+      if (!pendingChanges) return;
+      let appliedNodes: Nexus[] = [];
+      let appliedSynapses: Synapse[] = [];
+
+      try {
+          if (pendingChanges.fullBlueprint) {
+              appliedNodes = pendingChanges.fullBlueprint.nexuses;
+              appliedSynapses = pendingChanges.fullBlueprint.synapses;
+              onApplyStream(appliedNodes, appliedSynapses);
+          } else if (pendingChanges.patch) {
+              let newNodes = [...currentNexuses];
+              let newSynapses = [...currentSynapses];
+              const p = pendingChanges.patch;
+              if(p.removeNodeIds) newNodes = newNodes.filter(n => !p.removeNodeIds.includes(n.id));
+              if(p.removeConnectionIds) newSynapses = newSynapses.filter(c => !p.removeConnectionIds.includes(c.id));
+              if(p.updateNodes) {
+                  newNodes = newNodes.map(n => {
+                      const update = p.updateNodes.find(u => u.id === n.id);
+                      return update ? { ...n, ...update } as Nexus : n;
+                  });
+              }
+              if(p.addNodes) newNodes = [...newNodes, ...p.addNodes];
+              if(p.addConnections) newSynapses = [...newSynapses, ...p.addConnections];
+              
+              appliedNodes = newNodes;
+              appliedSynapses = newSynapses;
+              onApplyStream(newNodes, newSynapses);
           }
 
-          if(p.addNodes) newNodes = [...newNodes, ...p.addNodes];
-          if(p.addConnections) newSynapses = [...newSynapses, ...p.addConnections];
+          // --- TRAINING LOOP: SAVE SUCCESSFUL INTERACTION ---
+          // Get the last user prompt that triggered this change
+          const lastUserMsg = messages.filter(m => m.role === 'user' && !m.content.startsWith('[SYSTEM')).pop();
+          if (lastUserMsg) {
+              await saveArchitectMemory(lastUserMsg.content, appliedNodes, appliedSynapses);
+          }
 
-          onApplyStream(newNodes, newSynapses);
+          setPendingChanges(null);
+          onClose();
+      } catch (e: any) {
+          console.error("Apply Error:", e);
+          setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', content: `Apply Failed: ${e.message}`, timestamp: Date.now() }]);
       }
-      
-      setPendingChanges(null);
-      onClose();
   };
 
   if (!isOpen) return null;
 
+  // Usage Progress Calculation
+  const limit = PLAN_LIMITS[userPlan].AI_PROMPTS;
+  const usagePercent = Math.min((promptCount / limit) * 100, 100);
+  const isLimitReached = promptCount >= limit;
+
   return (
-    <div className="fixed inset-y-0 right-0 w-[480px] bg-[#030303]/95 backdrop-blur-2xl border-l border-white/5 z-[100] flex flex-col shadow-2xl animate-in slide-in-from-right duration-300 font-sans">
+    <div className="fixed inset-y-0 right-0 w-[520px] bg-[#030303]/98 backdrop-blur-3xl border-l border-white/10 z-[100] flex flex-col shadow-[0_0_100px_rgba(0,0,0,0.8)] animate-in slide-in-from-right duration-500 font-sans">
         
-        {/* --- HEADER --- */}
-        <div className="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
-            <div className="flex items-center gap-3">
-                <div className="p-2 bg-nexus-accent/10 rounded-lg border border-nexus-accent/20 relative">
-                    <Brain size={20} className="text-nexus-accent"/>
-                    <div className="absolute top-0 right-0 w-2 h-2 bg-nexus-success rounded-full animate-pulse shadow-[0_0_8px_#00ff9d]"></div>
+        {/* HEADER */}
+        <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+            <div className="flex items-center gap-4">
+                <div className="p-2.5 bg-nexus-accent/10 rounded-xl border border-nexus-accent/20 shadow-[0_0_20px_rgba(0,255,157,0.1)]">
+                    <Brain size={24} className="text-nexus-accent"/>
                 </div>
                 <div>
-                    <h2 className="text-sm font-black text-white uppercase tracking-widest">Architect Prime</h2>
-                    <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[9px] text-gray-500 font-mono flex items-center gap-1">
-                            <Cpu size={10} className="text-nexus-wire"/> Gemini 3.0 Pro Reasoning
-                        </span>
+                    <h2 className="text-sm font-black text-white uppercase tracking-[0.2em]">Architect Prime</h2>
+                    <div className="flex items-center gap-2 mt-1">
+                        <span className="flex h-1.5 w-1.5 rounded-full bg-nexus-success animate-pulse"></span>
+                        <span className="text-[9px] text-gray-500 font-mono uppercase tracking-widest">Self-Learning Active</span>
                     </div>
                 </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg text-gray-500 hover:text-white transition-colors"><X size={18}/></button>
+            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg text-gray-500 hover:text-white transition-colors"><X size={20}/></button>
         </div>
 
-        {/* --- CHAT AREA --- */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar" ref={scrollRef}>
+        {/* MESSAGES */}
+        <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar" ref={scrollRef}>
             {messages.map((msg, i) => (
-                <div key={i} className={`flex flex-col gap-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                    
-                    {/* Role Label */}
+                <div key={i} className={`flex flex-col gap-3 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                     <span className="text-[9px] font-black uppercase text-gray-600 tracking-widest px-1">
-                        {msg.role === 'user' ? 'User Instruction' : 'System Response'}
+                        {msg.role === 'user' ? 'Input Stream' : 'Architect Intelligence'}
                     </span>
-
-                    {/* Message Bubble */}
-                    <div className={`max-w-[95%] p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-lg border relative overflow-hidden ${
-                        msg.role === 'user' 
-                        ? 'bg-nexus-800 text-white border-white/5 rounded-tr-sm' 
-                        : 'bg-white/[0.03] text-gray-300 border-white/5 rounded-tl-sm'
-                    }`}>
-                        {/* Decorative Line */}
-                        <div className={`absolute top-0 left-0 w-1 h-full ${msg.role === 'user' ? 'bg-nexus-accent' : 'bg-nexus-wire'}`}></div>
-                        {msg.content}
-                    </div>
-
-                    {/* Decision Logs (If Architect) */}
-                    {msg.role === 'assistant' && msg.metadata?.decisionLog && msg.metadata.decisionLog.length > 0 && (
-                        <div className="ml-2 mt-2 w-full max-w-[95%] animate-in slide-in-from-left-2">
-                            <div className="text-[9px] font-bold text-gray-500 uppercase mb-2 flex items-center gap-1">
-                                <GitMerge size={10}/> Logic Trace
+                    
+                    {msg.content.includes("Free Plan Limit Reached") ? (
+                        <div className="max-w-[90%] p-6 bg-gradient-to-br from-nexus-900 to-black rounded-2xl border border-nexus-accent/30 shadow-2xl relative overflow-hidden group">
+                            <div className="absolute top-0 right-0 p-3 opacity-20"><Lock size={48} className="text-nexus-accent"/></div>
+                            <div className="relative z-10">
+                                <h3 className="text-sm font-black text-white uppercase tracking-widest mb-2 flex items-center gap-2">
+                                    <AlertTriangle size={14} className="text-yellow-500"/> Usage Limit Reached
+                                </h3>
+                                <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+                                    You've used all <b>5 free AI prompts</b>. The Architect requires more fuel to continue designing complex systems.
+                                </p>
+                                <button onClick={onUpgrade} className="w-full py-3 bg-nexus-accent text-black font-black rounded-xl text-[10px] uppercase tracking-widest hover:scale-105 transition-all flex items-center justify-center gap-2 shadow-lg">
+                                    <Crown size={14} fill="currentColor"/> Unlock Pro Power
+                                </button>
                             </div>
-                            <div className="space-y-1.5">
-                                {msg.metadata.decisionLog.map((decision: Decision, dIdx: number) => (
-                                    <div key={dIdx} className="flex items-center gap-3 text-[10px] text-gray-400 font-mono bg-black/40 px-3 py-2 rounded border border-white/5">
-                                        <div className="w-1.5 h-1.5 bg-nexus-wire rounded-full"></div>
-                                        <span className="font-bold uppercase text-nexus-wire">{decision.action}:</span>
-                                        <span className="opacity-80 truncate flex-1">{decision.reason}</span>
-                                    </div>
-                                ))}
+                        </div>
+                    ) : (
+                        <div className={`max-w-[95%] p-5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-xl border ${
+                            msg.role === 'user' 
+                            ? 'bg-nexus-800 text-white border-white/10 rounded-tr-none' 
+                            : (msg.role === 'system' ? 'bg-red-950/20 text-red-200 border-red-900/30' : 'bg-white/[0.03] text-gray-300 border-white/5 rounded-tl-none')
+                        }`}>
+                            {msg.content}
+                        </div>
+                    )}
+
+                    {msg.role === 'assistant' && msg.metadata?.decisionLog && (
+                        <div className="ml-2 w-full max-w-[90%] space-y-2 animate-in fade-in duration-700">
+                             <div className="text-[9px] font-bold text-gray-600 uppercase flex items-center gap-1.5 mb-3">
+                                <Terminal size={10}/> Telemetry Trace
                             </div>
+                            {msg.metadata.decisionLog.map((decision: Decision, dIdx: number) => (
+                                <div key={dIdx} className="flex items-center gap-3 text-[10px] text-gray-500 font-mono bg-black/40 px-4 py-2.5 rounded-xl border border-white/5">
+                                    <div className="w-1 h-1 bg-nexus-wire rounded-full shadow-[0_0_5px_#ffd700]"></div>
+                                    <span className="font-bold uppercase text-nexus-wire shrink-0">{decision.action}:</span>
+                                    <span className="truncate opacity-70">{decision.reason}</span>
+                                </div>
+                            ))}
                         </div>
                     )}
                 </div>
             ))}
 
-            {/* Thinking Indicator */}
             {isLoading && (
-                <div className="flex flex-col gap-3 animate-in fade-in zoom-in-95 my-4">
-                    <div className="flex items-center gap-3 text-nexus-accent text-xs font-mono uppercase tracking-widest px-4">
-                        <Loader2 size={14} className="animate-spin"/>
+                <div className="flex flex-col gap-4 animate-in fade-in zoom-in-95 my-6">
+                    <div className="flex items-center gap-3 text-nexus-accent text-xs font-mono uppercase tracking-[0.2em] px-4">
+                        <Loader2 size={16} className="animate-spin"/>
                         {thinkingStep || "Processing..."}
                     </div>
-                    {/* Progress Bar Simulation */}
                     <div className="h-0.5 bg-nexus-900 w-[60%] ml-4 rounded-full overflow-hidden">
                         <div className="h-full bg-nexus-accent animate-progress-indefinite"></div>
                     </div>
@@ -203,62 +304,95 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
             )}
         </div>
 
-        {/* --- ACTION AREA --- */}
-        <div className="p-6 border-t border-white/5 bg-black/40 backdrop-blur-md">
+        {/* ACTIONS */}
+        <div className="p-8 border-t border-white/10 bg-black/60 backdrop-blur-2xl">
+            {/* USAGE METER */}
+            <div className="mb-4 flex items-center justify-between text-[9px] font-black text-gray-500 uppercase tracking-widest">
+                <span className="flex items-center gap-2">
+                    <Activity size={10} className={isLimitReached ? "text-red-500" : "text-nexus-success"}/> AI Fuel
+                </span>
+                <span>{promptCount} / {limit} Prompts</span>
+            </div>
+            <div className="h-1 bg-white/10 rounded-full overflow-hidden mb-6">
+                <div className={`h-full transition-all duration-500 ${isLimitReached ? 'bg-red-500' : 'bg-nexus-success'}`} style={{ width: `${usagePercent}%` }}></div>
+            </div>
+
             {pendingChanges && (
-                <div className="mb-6 p-1 bg-gradient-to-r from-nexus-accent/20 to-nexus-wire/20 rounded-xl">
-                    <div className="bg-[#0a0a0a] p-4 rounded-[10px] relative overflow-hidden">
-                        <div className="flex justify-between items-start mb-3 relative z-10">
-                            <div className="flex items-center gap-2 text-nexus-accent text-xs font-black uppercase tracking-wider">
-                                <Layout size={14}/> Blueprint Generated
+                <div className="mb-8 p-1 bg-gradient-to-br from-nexus-accent/40 via-blue-500/20 to-purple-500/40 rounded-2xl animate-in slide-in-from-bottom-4">
+                    <div className="bg-[#0a0a0a] p-6 rounded-[14px] relative overflow-hidden">
+                        <div className="flex justify-between items-center mb-4 relative z-10">
+                            <div className="flex items-center gap-2.5 text-nexus-accent text-xs font-black uppercase tracking-widest">
+                                <Layout size={16}/> Project Blueprint Ready
                             </div>
-                            <div className="flex gap-2">
-                                <span className="text-[9px] bg-white/5 text-gray-400 px-2 py-1 rounded font-mono">
-                                    +{pendingChanges.patch?.addNodes?.length || 0} Nodes
-                                </span>
-                            </div>
+                            <span className="text-[10px] bg-white/5 text-gray-400 px-3 py-1 rounded-full font-mono border border-white/5">
+                                Readiness: 100%
+                            </span>
                         </div>
-                        <p className="text-[10px] text-gray-400 mb-4 leading-relaxed relative z-10">
-                            The architect has prepared a structural update. Review the logic trace above before applying.
+                        <p className="text-[11px] text-gray-500 mb-6 leading-relaxed relative z-10">
+                            The Architect has finalized a complete project structure. Review the workflow description above before deploying to the kernel.
                         </p>
-                        <div className="flex gap-2 relative z-10">
-                            <button onClick={handleApply} className="flex-1 py-3 bg-nexus-accent text-black rounded-lg text-xs font-black uppercase tracking-wider hover:bg-nexus-success transition-all shadow-[0_0_20px_rgba(0,255,157,0.2)] flex items-center justify-center gap-2">
-                                <CheckCircle size={14}/> Apply Blueprint
+                        <div className="flex gap-3 relative z-10">
+                            <button onClick={handleApply} className="flex-1 py-4 bg-nexus-accent text-black rounded-xl text-xs font-black uppercase tracking-widest hover:scale-[1.02] transition-all shadow-[0_0_30px_rgba(0,255,157,0.2)] flex items-center justify-center gap-3">
+                                <CheckCircle size={16}/> Deploy Project
                             </button>
-                            <button onClick={() => setPendingChanges(null)} className="px-4 py-3 bg-white/5 text-gray-400 hover:text-white hover:bg-red-900/20 hover:border-red-500/30 border border-transparent rounded-lg text-xs font-bold transition-all">
+                            <button onClick={() => setPendingChanges(null)} className="px-6 py-4 bg-white/5 text-gray-400 hover:text-white rounded-xl text-xs font-bold transition-all border border-transparent hover:border-white/10">
                                 Discard
                             </button>
                         </div>
-                        {/* Background Glow */}
-                        <div className="absolute -top-10 -right-10 w-32 h-32 bg-nexus-accent/10 rounded-full blur-3xl"></div>
+                        <div className="absolute -top-10 -right-10 w-40 h-40 bg-nexus-accent/5 rounded-full blur-3xl"></div>
                     </div>
                 </div>
             )}
+
+            {/* NEURAL TOOLBELT */}
+            <div className="grid grid-cols-3 gap-2 mb-4">
+                <button 
+                    onClick={() => handleAnalysis('VALIDATE')}
+                    disabled={isLoading || isLimitReached}
+                    className="flex items-center justify-center gap-2 py-3 bg-red-900/10 border border-red-900/30 hover:bg-red-900/20 text-red-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
+                >
+                    <ShieldCheck size={14}/> QA Check
+                </button>
+                <button 
+                    onClick={() => handleAnalysis('EXPLAIN')}
+                    disabled={isLoading || isLimitReached}
+                    className="flex items-center justify-center gap-2 py-3 bg-blue-900/10 border border-blue-900/30 hover:bg-blue-900/20 text-blue-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
+                >
+                    <BookOpen size={14}/> Explain
+                </button>
+                <button 
+                    onClick={() => handleAnalysis('OPTIMIZE')}
+                    disabled={isLoading || isLimitReached}
+                    className="flex items-center justify-center gap-2 py-3 bg-nexus-accent/10 border border-nexus-accent/20 hover:bg-nexus-accent/20 text-nexus-accent rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
+                >
+                    <Zap size={14}/> Optimize
+                </button>
+            </div>
 
             <form onSubmit={handleSubmit} className="relative group">
                 <input 
                     type="text" 
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="E.g. 'Watch Gmail for invoices, parse with AI, and save to Airtable'"
-                    className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl pl-5 pr-14 py-4 text-sm text-white focus:border-nexus-accent focus:ring-1 focus:ring-nexus-accent/50 outline-none transition-all placeholder:text-gray-700 font-medium"
-                    disabled={isLoading}
+                    placeholder={isLimitReached ? "Usage limit reached." : "Describe what you want to build..."}
+                    className={`w-full bg-[#080808] border rounded-2xl pl-6 pr-16 py-5 text-sm text-white focus:ring-1 outline-none transition-all placeholder:text-gray-800 ${isLimitReached ? 'border-red-900/30 cursor-not-allowed opacity-50' : 'border-white/10 focus:border-nexus-accent focus:ring-nexus-accent/30'}`}
+                    disabled={isLoading || isLimitReached}
                 />
                 <button 
                     type="submit" 
-                    disabled={!input.trim() || isLoading}
-                    className="absolute right-2 top-2 bottom-2 aspect-square bg-white/5 text-gray-400 rounded-lg hover:bg-nexus-accent hover:text-black transition-all disabled:opacity-0 disabled:scale-90 flex items-center justify-center"
+                    disabled={!input.trim() || isLoading || isLimitReached}
+                    className={`absolute right-3 top-3 bottom-3 aspect-square rounded-xl hover:scale-105 transition-all disabled:opacity-0 disabled:scale-90 flex items-center justify-center shadow-lg ${isLimitReached ? 'bg-gray-800 text-gray-500' : 'bg-nexus-accent text-black'}`}
                 >
-                    <ArrowRight size={18} strokeWidth={2.5} />
+                    {isLimitReached ? <Lock size={18}/> : <ArrowRight size={22} strokeWidth={3} />}
                 </button>
             </form>
             
-            <div className="flex justify-between items-center mt-4 px-1">
-                <div className="flex items-center gap-2 text-[9px] text-gray-600 font-bold uppercase tracking-widest">
-                    <ShieldCheck size={10}/> Encrypted Context
+            <div className="flex justify-between items-center mt-5 px-1">
+                <div className="flex items-center gap-2 text-[10px] text-gray-600 font-bold uppercase tracking-widest">
+                    <Activity size={12} className="text-nexus-success"/> Neural Bridge Connected
                 </div>
-                <div className="text-[9px] text-gray-600 font-mono">
-                    Token Budget: 4k/req
+                <div className="text-[10px] text-gray-700 font-mono">
+                    Session ID: {messages[0]?.id.slice(0, 8)}
                 </div>
             </div>
         </div>

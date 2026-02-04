@@ -1,36 +1,40 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { BLUEPRINTS } from '../data/blueprints'; 
 import { NexusSubtype, NexusType, Blueprint, Nexus, Synapse } from '../types';
-import { Layers, ArrowRight, Zap, Building2, Globe, Brain, Split, GitMerge, HardDrive, Database, Terminal, MessageCircle, LayoutGrid, User, Key, LogIn, LogOut, Loader2, Crown, ShieldCheck, Search, X, Box, Cpu } from 'lucide-react';
+import { Layers, ArrowRight, Zap, Building2, Globe, Brain, Split, GitMerge, HardDrive, Database, Terminal, MessageCircle, LayoutGrid, User, Key, LogIn, LogOut, Loader2, Crown, ShieldCheck, Search, Box, Cpu, Sparkles, Gift, ListFilter, Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getUserBlueprints } from '../services/cloudStore';
 import PricingModal from './PricingModal';
 import MarketplaceModal from './MarketplaceModal'; 
+import ReferralModal from './ReferralModal'; 
+import AdminDashboard from './AdminDashboard'; 
 import NodeLibrary from './sidebar/NodeLibrary'; 
 
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddNexus: (type: NexusType, subtype: NexusSubtype) => void;
+  onAddNexus: (type: NexusType, subtype: NexusSubtype, pos?: {x: number, y: number}) => void;
   onLoadBlueprint: (bp: Blueprint) => void;
   onClear: () => void; 
   onOpenSettings: () => void;
   onNavigateProjects: () => void;
   onOpenCredentials?: () => void; 
   onOpenRegistry?: () => void;
+  onOpenAI?: () => void; 
   currentView: 'dashboard' | 'editor'; 
   currentStream?: { nexuses: Nexus[], synapses: Synapse[] };
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBlueprint, onClear, onOpenSettings, onNavigateProjects, onOpenCredentials, onOpenRegistry, currentView, currentStream }) => {
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBlueprint, onClear, onOpenSettings, onNavigateProjects, onOpenCredentials, onOpenRegistry, onOpenAI, currentView, currentStream }) => {
   const [activeTab, setActiveTab] = useState<'blocks' | 'blueprints'>('blocks');
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [isMarketplaceOpen, setIsMarketplaceOpen] = useState(false);
+  const [isReferralOpen, setIsReferralOpen] = useState(false);
+  const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState(''); 
 
-  const { user, signInWithGoogle, logout } = useAuth();
+  const { user, signInWithGoogle, logout, isDevMode } = useAuth();
 
   const handleLogin = async () => {
       if (isSigningIn) return;
@@ -57,10 +61,15 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBl
       }
   };
 
+  // Mock Admin Check (In real app, check user metadata/claims)
+  const canAccessAdmin = isDevMode || user?.email?.includes('owner') || user?.email?.includes('admin');
+
   return (
     <>
       <PricingModal isOpen={isPricingOpen} onClose={() => setIsPricingOpen(false)} />
       <MarketplaceModal isOpen={isMarketplaceOpen} onClose={() => setIsMarketplaceOpen(false)} />
+      <ReferralModal isOpen={isReferralOpen} onClose={() => setIsReferralOpen(false)} />
+      <AdminDashboard isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} />
 
       {isOpen && (
         <div className="fixed inset-0 bg-black/80 z-30 md:hidden" onClick={onClose} />
@@ -76,8 +85,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBl
             <h1 className="font-display font-bold text-xl text-white tracking-wide">
                 <span className="text-nexus-accent">Nexus</span>Stream
             </h1>
-            <button onClick={() => setIsPricingOpen(true)} className="p-1.5 bg-nexus-accent/10 border border-nexus-accent/30 rounded-lg group animate-pulse">
-                <Crown size={16} className="text-nexus-accent group-hover:scale-110 transition-transform" />
+            <button onClick={onOpenAI} className="p-1.5 bg-nexus-accent text-black rounded-lg group shadow-[0_0_15px_rgba(0,255,157,0.3)] hover:scale-105 transition-all" title="AI Architect">
+                <Sparkles size={16} fill="currentColor" />
             </button>
         </div>
 
@@ -97,7 +106,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBl
             </button>
         </div>
 
-        {/* Credentials & Marketplace Row */}
+        {/* Credentials Row */}
         <div className="px-3 py-2 border-b border-nexus-800 grid grid-cols-3 gap-2">
              <button 
                 onClick={onOpenCredentials}
@@ -149,27 +158,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBl
                     </div>
 
                     <div className="space-y-4">
-                        {groupedBlueprints['Simple Start'] && (
-                            <div key="Simple Start">
-                                <h3 className="text-[10px] font-bold text-nexus-success uppercase tracking-widest mb-2 flex items-center gap-2 px-2">
-                                    <Zap size={14} /> Quick Starters
-                                </h3>
-                                <div className="space-y-2">
-                                    {groupedBlueprints['Simple Start'].map(bp => (
-                                        <div key={bp.id} className="p-3 rounded-xl bg-nexus-success/10 border border-nexus-success/30 group hover:border-nexus-success/50 transition-all cursor-pointer" onClick={() => onLoadBlueprint(bp)}>
-                                            <div className="flex justify-between items-start mb-1">
-                                                <h4 className="font-bold text-xs text-white">{bp.name}</h4>
-                                                <ArrowRight size={12} className="text-nexus-success"/>
-                                            </div>
-                                            <p className="text-[10px] text-gray-400 line-clamp-2">{bp.description}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
                         {Object.entries(groupedBlueprints).map(([category, blueprints]) => {
-                            if (category === 'Simple Start') return null; 
                             const visibleBps = blueprints.filter(bp => bp.name.toLowerCase().includes(searchTerm.toLowerCase()));
                             if (visibleBps.length === 0) return null;
 
@@ -183,9 +172,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBl
                                             <div key={bp.id} className="p-3 rounded-xl bg-nexus-800/30 border border-nexus-800 group hover:border-nexus-500 transition-all">
                                                 <div className="flex justify-between items-start mb-2">
                                                     <h4 className="font-bold text-xs text-white leading-tight">{bp.name}</h4>
-                                                    <span className="text-[9px] bg-nexus-900 text-gray-500 px-1.5 py-0.5 rounded border border-nexus-800">{bp.nexuses.length} Nodes</span>
                                                 </div>
-                                                <p className="text-[10px] text-gray-500 mb-3 line-clamp-2 leading-relaxed">{bp.description}</p>
                                                 <button onClick={() => onLoadBlueprint(bp)} className="w-full py-1.5 bg-nexus-900 group-hover:bg-nexus-accent group-hover:text-black border border-nexus-700 rounded-lg text-[9px] font-bold uppercase transition-all flex items-center justify-center gap-1">
                                                     Deploy <ArrowRight size={10} />
                                                 </button>
@@ -204,46 +191,41 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBl
                 <div className="w-16 h-16 bg-nexus-800 rounded-full flex items-center justify-center">
                     <LayoutGrid size={32} className="text-nexus-500" />
                 </div>
-                <div>
-                    <h3 className="text-sm font-bold text-gray-300">Project Dashboard</h3>
-                    <p className="text-xs text-gray-500 mt-2">Manage your automation workflows here.</p>
-                </div>
+                <h3 className="text-sm font-bold text-gray-300">Project Dashboard</h3>
              </div>
         )}
 
-        {/* User Profile / Status */}
+        {/* User Profile */}
         <div className="p-4 border-t border-nexus-800 bg-nexus-950">
              {user ? (
                  <div className="flex flex-col gap-2">
                      <div className="flex items-center gap-3">
-                         {user.photoURL ? <img src={user.photoURL} className="w-8 h-8 rounded-full border border-nexus-700" alt=""/> : <div className="w-8 h-8 rounded-full bg-nexus-800 flex items-center justify-center"><User size={14}/></div>}
+                         <div className="w-8 h-8 rounded-full bg-nexus-800 flex items-center justify-center"><User size={14}/></div>
                          <div className="flex-1 overflow-hidden">
-                             <div className="text-xs font-bold text-white truncate flex items-center gap-1">
-                                 {user.displayName}
-                             </div>
+                             <div className="text-xs font-bold text-white truncate">{user.displayName || 'Architect'}</div>
                              <div className="text-[9px] text-gray-500 truncate">{user.email}</div>
                          </div>
-                         
-                         <button onClick={logout} className="p-1.5 hover:bg-red-900/30 text-gray-500 hover:text-red-500 rounded"><LogOut size={14}/></button>
+                         <button onClick={onOpenSettings} className="p-1.5 hover:bg-nexus-800 rounded text-gray-500 hover:text-white transition-colors" title="Settings"><Settings size={14}/></button>
                      </div>
-                     <div className="flex justify-between items-center bg-nexus-900/50 p-2 rounded-lg border border-nexus-800">
-                         <span className="text-[9px] font-mono text-gray-500 uppercase">Current Plan</span>
-                         <span className="text-[9px] bg-green-900/30 text-green-400 border border-green-800 px-2 py-0.5 rounded flex items-center gap-1 font-bold">
-                             <ShieldCheck size={10}/> Free Tier
-                         </span>
+                     <div className="grid grid-cols-2 gap-2 mt-2">
+                         <button onClick={() => setIsReferralOpen(true)} className="flex items-center justify-center gap-1.5 p-2 bg-gradient-to-r from-purple-900 to-nexus-900 border border-purple-800 rounded text-[9px] font-bold text-purple-300 hover:text-white transition-all">
+                             <Gift size={10}/> Refer
+                         </button>
+                         {canAccessAdmin && (
+                             <button onClick={() => setIsAdminOpen(true)} className="flex items-center justify-center gap-1.5 p-2 bg-nexus-900 border border-nexus-800 rounded text-[9px] font-bold text-gray-400 hover:text-white transition-all">
+                                 <ListFilter size={10}/> Admin
+                             </button>
+                         )}
                      </div>
                  </div>
              ) : (
-                 <div className="space-y-2">
-                     <button 
-                        onClick={handleLogin} 
-                        disabled={isSigningIn}
-                        className="w-full py-3 bg-nexus-accent text-black rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-nexus-success transition-all shadow-lg"
-                    >
-                         {isSigningIn ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14}/>} 
-                         {isSigningIn ? "Connecting..." : "Sign In with Google"}
-                     </button>
-                 </div>
+                 <button 
+                    onClick={handleLogin} 
+                    disabled={isSigningIn}
+                    className="w-full py-3 bg-nexus-accent text-black rounded-lg text-xs font-bold flex items-center justify-center gap-2"
+                >
+                     {isSigningIn ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14}/>} Sign In
+                 </button>
              )}
         </div>
       </div>

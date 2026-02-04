@@ -1,32 +1,25 @@
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { ChatMessage, Nexus, Synapse } from '../../types';
 import { ARCHITECT_PERSONA } from './systemPersona';
 import { getToolsContext } from './knowledgeBase';
 import { ArchitectResponse } from './types';
 import { validateGraph, simulatePatch } from './validator';
 import { findSimilarWorkflows } from '../memoryService';
+import { getArchitectMemories } from '../cloudStore';
+import { callAIWithTimeout } from '../geminiService';
+import { safeJsonParse, validateArchitectResponse } from './responseParser';
 
-// --- SMART LAYOUT ENGINE ---
 const applySmartLayout = (currentNodes: Nexus[], newNodes: Nexus[]): Nexus[] => {
-    let maxX = 0;
-    
-    // Find the furthest right point of the current graph
-    currentNodes.forEach(n => {
-        if (n.position.x > maxX) maxX = n.position.x;
-    });
-
-    if (currentNodes.length > 0) maxX += 400; // Add gap after existing flow
-    else maxX = 100; // Start point
+    let maxX = currentNodes.length > 0 ? Math.max(...currentNodes.map(n => n.position.x)) + 400 : 100;
 
     return newNodes.map((node, index) => {
-        // If the AI gave 0,0 or undefined, we auto-place it in a sequence
         if (!node.position || (node.position.x === 0 && node.position.y === 0)) {
             return {
                 ...node,
                 position: {
-                    x: maxX + (index * 350), // Move right for each new node
-                    y: 300 // Keep centered vertically
+                    x: maxX + (index * 350),
+                    y: 300
                 }
             };
         }
@@ -34,18 +27,6 @@ const applySmartLayout = (currentNodes: Nexus[], newNodes: Nexus[]): Nexus[] => 
     });
 };
 
-// --- VARIABLE CHEAT SHEET ---
-// This helps the AI map data correctly by knowing standard outputs
-const VARIABLE_CHEAT_SHEET = `
-**COMMON VARIABLE MAPPINGS (Use these patterns):**
-- Webhook Input: {{Trigger_Name.data.body}} or {{Trigger_Name.data.query}}
-- AI Output: {{Agent_Name.data.text}}
-- HTTP Response: {{Http_Request.data.data}}
-- Email Subject: {{Email_Trigger.data.subject}}
-- Google Sheet Row: {{Sheet_Read.data.rows}}
-`;
-
-// --- SELF-CORRECTION LOOP ---
 export const processArchitectRequest = async (
     ai: GoogleGenAI,
     userRequest: string,
@@ -56,97 +37,75 @@ export const processArchitectRequest = async (
     imageData?: string
 ): Promise<ArchitectResponse> => {
     
-    // 1. Context Injection
     const toolsContext = getToolsContext();
     const canvasState = JSON.stringify({
-        nodes: currentNexuses.map(n => ({ id: n.id, label: n.label, type: n.subtype, config: n.config, position: n.position })),
+        nodes: currentNexuses.map(n => ({ id: n.id, label: n.label, type: n.subtype, config: n.config })),
         connections: currentSynapses
     });
 
-    // 2. Memory Injection (RAG)
-    const similarFlows = findSimilarWorkflows(userRequest);
-    let memoryContext = "";
-    if (similarFlows.length > 0) {
-        memoryContext = `\n\n**RELEVANT PAST WORKFLOWS (USE FOR INSPIRATION):**\n${JSON.stringify(similarFlows.map(f => ({ name: f.name, nodes: f.nexuses.map(n => n.subtype) })), null, 2)}`;
-    }
+    // --- REINFORCEMENT LEARNING: FETCH MEMORIES ---
+    // The architect learns from past successful blueprints
+    const learnedPatterns = await getArchitectMemories(5);
 
-    const baseInstruction = `${ARCHITECT_PERSONA}\n${toolsContext}\n${VARIABLE_CHEAT_SHEET}\n${memoryContext}\n**PROJECT CONTEXT:** "${projectContext}"\n**CURRENT_CANVAS_STATE:** ${canvasState}`;
+    const baseInstruction = `${ARCHITECT_PERSONA}\n\nTOOLS:\n${toolsContext}\n\nCANVAS_STATE:\n${canvasState}\n\n${learnedPatterns}`;
     
-    let attempts = 0;
-    let lastError = "";
+    // Using gemini-3-pro-preview for complex architectural reasoning
+    const model = 'gemini-3-pro-preview';
+    const client = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-    // RETRY LOOP (Reflexion)
-    while (attempts < 2) {
-        try {
-            let promptParts: any[] = [{ text: userRequest }];
-            
-            if (lastError) {
-                // If retrying, inject the error into the prompt (Self-Correction)
-                promptParts = [{ text: `PREVIOUS ATTEMPT FAILED. Error: ${lastError}. \nPlease fix the JSON structure and try again. Ensure 'patch' contains valid 'addNodes' and 'addConnections'.\n\nOriginal Request: ${userRequest}` }];
-            } else if (imageData) {
-                const dataMatch = imageData.match(/^data:(image\/\w+);base64,(.+)$/);
-                if (dataMatch) promptParts.push({ inlineData: { mimeType: dataMatch[1], data: dataMatch[2] } });
+    try {
+        // 1. CALL WITH TIMEOUT (15s)
+        const response = await callAIWithTimeout<GenerateContentResponse>(() => client.models.generateContent({
+            model: model,
+            contents: [
+                { role: 'user', parts: [{ text: baseInstruction }] },
+                ...history.slice(-6).map(m => ({ 
+                    role: m.role === 'assistant' ? 'model' : 'user', 
+                    parts: [{ text: m.content }] 
+                })),
+                { role: 'user', parts: [{ text: `NEW_USER_REQUEST: ${userRequest}` }] }
+            ],
+            config: { 
+                temperature: 0.2,
+                thinkingConfig: { thinkingBudget: 4000 } // High budget for structural integrity
             }
+        }), 18000); // 18s total budget including network
 
-            // 3. Model Power (Gemini 3 Pro + Thinking 4000)
-            const response = await ai.models.generateContent({
-                model: "gemini-3-pro-preview", 
-                contents: [
-                    { role: 'user', parts: [{ text: baseInstruction }] },
-                    ...history.slice(-4).map(m => ({ 
-                        role: m.role === 'assistant' ? 'model' : 'user', 
-                        parts: [{ text: m.content }] 
-                    })),
-                    { role: 'user', parts: promptParts }
-                ],
-                config: { 
-                    maxOutputTokens: 20000, 
-                    temperature: 0.3, 
-                    // CRITICAL: The "Soch" (Reasoning) Engine
-                    thinkingConfig: { thinkingBudget: 4000 }
-                }
-            });
+        let rawText = response.text || "{}";
+        
+        // 2. CLEANUP & SAFE PARSE
+        rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+        const parsed = safeJsonParse<ArchitectResponse>(rawText);
 
-            const rawText = response.text || "{}";
-            
-            // Extract JSON from Markdown block
-            const jsonMatch = rawText.match(/```json\s*([\s\S]*?)\s*```/);
-            const jsonString = jsonMatch ? jsonMatch[1] : rawText;
-
-            let output: ArchitectResponse = JSON.parse(jsonString);
-
-            // 4. Post-Processing: Smart Layout
-            if (output.patch && output.patch.addNodes) {
-                output.patch.addNodes = applySmartLayout(currentNexuses, output.patch.addNodes);
-            }
-
-            // 5. Validation (Safety Check)
-            let finalState = { nexuses: currentNexuses, synapses: currentSynapses };
-            if (output.fullBlueprint) finalState = output.fullBlueprint;
-            else if (output.patch) finalState = simulatePatch(currentNexuses, currentSynapses, output.patch);
-
-            if (output.intent !== 'EXPLAIN_FLOW' && (output.fullBlueprint || output.patch)) {
-                const validation = validateGraph(finalState.nexuses, finalState.synapses);
-                if (!validation.isValid) {
-                    throw new Error(`Validation Failed: ${validation.errors[0]}`);
-                }
-            }
-
-            return output;
-
-        } catch (err: any) {
-            console.warn(`Architect attempt ${attempts + 1} failed:`, err);
-            lastError = err.message;
-            attempts++;
+        if (!parsed) {
+            throw new Error("INVALID_JSON_RESPONSE");
         }
-    }
 
-    // Fallback if AI fails twice
-    return {
-        intent: 'EXPLAIN_FLOW',
-        text: `I attempted to build the flow, but encountered a structural error: ${lastError}. Please simplify the request or try manual mode.`,
-        decisionLog: [],
-        confidenceScore: 0,
-        riskLevel: 'HIGH'
-    };
+        // 3. STRUCTURAL VALIDATION
+        const validatedOutput = validateArchitectResponse(parsed);
+
+        // 4. POST-PROCESS (Layout)
+        if (validatedOutput.patch?.addNodes) {
+            validatedOutput.patch.addNodes = applySmartLayout(currentNexuses, validatedOutput.patch.addNodes);
+        }
+
+        return validatedOutput;
+
+    } catch (err: any) {
+        console.error("Architect Kernel Error:", err);
+        
+        // Return a safe fallback response instead of crashing
+        let friendlyError = "I encountered a system error.";
+        if (err.message === 'AI_TIMEOUT') friendlyError = "I'm taking too long to think. Please try a simpler request.";
+        if (err.message === 'INVALID_JSON_RESPONSE') friendlyError = "My internal structure generator failed. Please ask again.";
+
+        return {
+            intent: 'EXPLAIN_FLOW',
+            text: `⚠️ **System Alert**: ${friendlyError}`,
+            decisionLog: [],
+            confidenceScore: 0,
+            riskLevel: 'HIGH',
+            validationError: err.message
+        };
+    }
 };
