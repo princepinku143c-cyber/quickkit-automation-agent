@@ -17,8 +17,10 @@ const AuthPage: React.FC<AuthPageProps> = ({ view, onBack }) => {
         setIsAuthenticating(true);
         try {
             await signInWithGoogle();
-        } catch (e) {
-            // Error is handled by AuthContext and exposed via authError
+        } catch (e: any) {
+            // 🔥 DEBUGGING: Immediate Visual Feedback
+            console.error("Google Login Failed:", e);
+            alert(`GOOGLE LOGIN ERROR:\n${e.message}\n\nCheck console for full details.`);
             setIsAuthenticating(false);
         }
     };

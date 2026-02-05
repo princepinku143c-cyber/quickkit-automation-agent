@@ -55,8 +55,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signInWithGoogle = async () => {
     if (!auth) {
-        setAuthError("Firebase Core not initialized. Check configuration.");
-        return;
+        const msg = "Firebase Core not initialized. Check your .env file or firebase.ts config.";
+        setAuthError(msg);
+        throw new Error(msg);
     }
     setAuthError(null);
     try {
@@ -66,20 +67,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             await ensureUserProfile(result.user);
         }
     } catch (error: any) {
-        console.error("Login Error:", error);
+        console.error("Login Error Full Object:", error);
         
+        let errorMsg = error.message || "Unknown Authentication Error";
+
+        // --- SMART ERROR HANDLING FOR FOUNDERS ---
         if (error.code === 'auth/operation-not-supported-in-this-environment' || error.message?.includes('protocol')) {
             setEnvRestricted(true);
-            setAuthError("Environment Error: Google Auth unavailable on this domain/protocol. Use Local Workspace.");
+            errorMsg = "Setup Error: Google Auth requires a server (http://localhost), not a file.";
         } else if (error.code === 'auth/popup-closed-by-user') {
-            setAuthError("Sign-in cancelled by user.");
+            errorMsg = "Login cancelled by user.";
         } else if (error.code === 'auth/unauthorized-domain') {
-            setAuthError(`Domain Not Authorized: Add "${window.location.hostname}" to Firebase Console > Auth > Settings.`);
+            const currentDomain = window.location.hostname;
+            errorMsg = `Domain Blocked: Go to Firebase Console > Authentication > Settings > Authorized Domains and add "${currentDomain}"`;
+        } else if (error.code === 'auth/api-key-not-valid' || error.code === 'auth/invalid-api-key') {
+            errorMsg = "Config Error: Invalid Firebase API Key in .env or firebase.ts";
         } else if (error.code === 'auth/network-request-failed') {
-            setAuthError("Network Error: Check internet or firewall.");
-        } else {
-            setAuthError(error.message || "Unknown Authentication Error");
+            errorMsg = "Network Error: Check internet connection or firewall.";
+        } else if (error.message.includes("configuration")) {
+             errorMsg = "Firebase Config Missing. Check .env variables.";
         }
+
+        setAuthError(errorMsg);
+        // 🔥 CRITICAL: Re-throw so the UI component can alert() it
+        throw new Error(errorMsg);
     }
   };
 

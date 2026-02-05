@@ -30,9 +30,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [pendingChanges, setPendingChanges] = useState<ArchitectResponse | null>(null);
   const [thinkingStep, setThinkingStep] = useState<string>('');
   
-  // Note: We no longer track local 'promptCount' for logic, only for immediate UI feedback if needed.
-  // The authority is now Firestore via checkAndIncrementAI.
-  
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,7 +43,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           setMessages([{
               id: 'init',
               role: 'assistant',
-              content: `**NexusStream Architect Prime Online.**\n\nI am ready to synthesize your automation stack. Describe your goal in natural language (e.g., "Build a lead scraper that saves to Sheets and alerts Slack").`,
+              content: `**Architect Brain Online.**\n\nI am here to design your automation logic. Describe your goal, and I will plan the workflow, identify risks, and map data flows.\n\n*I do not execute workflows or access external APIs.*`,
               timestamp: Date.now()
           }]);
       }
@@ -77,11 +74,11 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     setPendingChanges(null);
 
     const steps = [
-        "Synthesizing Requirements...", 
-        "Architecting Graph Topology...", 
-        "Injecting Safety Guards...", 
-        "Mapping Neural Variables...",
-        "Final Logic Validation..."
+        "Analyzing Requirements...", 
+        "Architecting Logic Flow...", 
+        "Designing Safety Guards...", 
+        "Mapping Data Variables...",
+        "Finalizing Blueprint..."
     ];
     let stepIdx = 0;
     const interval = setInterval(() => {
@@ -214,10 +211,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                     <Brain size={24} className="text-nexus-accent"/>
                 </div>
                 <div>
-                    <h2 className="text-sm font-black text-white uppercase tracking-[0.2em]">Architect Prime</h2>
+                    <h2 className="text-sm font-black text-white uppercase tracking-[0.2em]">Architect Intelligence</h2>
                     <div className="flex items-center gap-2 mt-1">
-                        <span className="flex h-1.5 w-1.5 rounded-full bg-nexus-success animate-pulse"></span>
-                        <span className="text-[9px] text-gray-500 font-mono uppercase tracking-widest">Self-Learning Active</span>
+                        <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                        <span className="text-[9px] text-gray-500 font-mono uppercase tracking-widest">Planning Mode Active</span>
                     </div>
                 </div>
             </div>
@@ -229,7 +226,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
             {messages.map((msg, i) => (
                 <div key={i} className={`flex flex-col gap-3 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                     <span className="text-[9px] font-black uppercase text-gray-600 tracking-widest px-1">
-                        {msg.role === 'user' ? 'Input Stream' : 'Architect Intelligence'}
+                        {msg.role === 'user' ? 'Requirements' : 'Blueprint Design'}
                     </span>
                     
                     {msg.content.includes("Free Plan Limit Reached") ? (
@@ -260,7 +257,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                     {msg.role === 'assistant' && msg.metadata?.decisionLog && (
                         <div className="ml-2 w-full max-w-[90%] space-y-2 animate-in fade-in duration-700">
                              <div className="text-[9px] font-bold text-gray-600 uppercase flex items-center gap-1.5 mb-3">
-                                <Terminal size={10}/> Telemetry Trace
+                                <Terminal size={10}/> Architectural Decisions
                             </div>
                             {msg.metadata.decisionLog.map((decision: Decision, dIdx: number) => (
                                 <div key={dIdx} className="flex items-center gap-3 text-[10px] text-gray-500 font-mono bg-black/40 px-4 py-2.5 rounded-xl border border-white/5">
@@ -302,18 +299,18 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                     <div className="bg-[#0a0a0a] p-6 rounded-[14px] relative overflow-hidden">
                         <div className="flex justify-between items-center mb-4 relative z-10">
                             <div className="flex items-center gap-2.5 text-nexus-accent text-xs font-black uppercase tracking-widest">
-                                <Layout size={16}/> Project Blueprint Ready
+                                <Layout size={16}/> Blueprint Ready
                             </div>
                             <span className="text-[10px] bg-white/5 text-gray-400 px-3 py-1 rounded-full font-mono border border-white/5">
-                                Readiness: 100%
+                                Validated
                             </span>
                         </div>
                         <p className="text-[11px] text-gray-500 mb-6 leading-relaxed relative z-10">
-                            The Architect has finalized a complete project structure. Review the workflow description above before deploying to the kernel.
+                            The Architect has finalized the workflow design. Review the logic explanation above before applying to the canvas.
                         </p>
                         <div className="flex gap-3 relative z-10">
                             <button onClick={handleApply} className="flex-1 py-4 bg-nexus-accent text-black rounded-xl text-xs font-black uppercase tracking-widest hover:scale-[1.02] transition-all shadow-[0_0_30px_rgba(0,255,157,0.2)] flex items-center justify-center gap-3">
-                                <CheckCircle size={16}/> Deploy Project
+                                <CheckCircle size={16}/> Apply Blueprint
                             </button>
                             <button onClick={() => setPendingChanges(null)} className="px-6 py-4 bg-white/5 text-gray-400 hover:text-white rounded-xl text-xs font-bold transition-all border border-transparent hover:border-white/10">
                                 Discard
@@ -354,7 +351,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                     type="text" 
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="Describe what you want to build..."
+                    placeholder="Describe what you want to design..."
                     className={`w-full bg-[#080808] border rounded-2xl pl-6 pr-16 py-5 text-sm text-white focus:ring-1 outline-none transition-all placeholder:text-gray-800 border-white/10 focus:border-nexus-accent focus:ring-nexus-accent/30`}
                     disabled={isLoading}
                 />
@@ -369,7 +366,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
             
             <div className="flex justify-between items-center mt-5 px-1">
                 <div className="flex items-center gap-2 text-[10px] text-gray-600 font-bold uppercase tracking-widest">
-                    <Activity size={12} className="text-nexus-success"/> Neural Bridge Connected
+                    <Activity size={12} className="text-nexus-success"/> Design Engine Active
                 </div>
                 <div className="text-[10px] text-gray-700 font-mono">
                     Session ID: {messages[0]?.id.slice(0, 8)}
