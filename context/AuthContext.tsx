@@ -6,8 +6,9 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import firebase from 'firebase/compat/app';
-import { auth, googleProvider } from '../services/firebase';
+import { auth } from '../services/firebase';
 import { ensureUserProfile } from '../services/userService';
+import { triggerGoogleLogin, triggerLogout } from '../services/authService';
 import { Zap } from 'lucide-react';
 
 interface AuthContextType {
@@ -28,18 +29,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true); 
   const [authError, setAuthError] = useState<string | null>(null);
   const [isDevMode, setIsDevMode] = useState(false);
-  const [envRestricted, setEnvRestricted] = useState(false); 
 
-  useEffect(() => {
-      if (typeof window !== 'undefined') {
-          const protocol = window.location.protocol;
-          if (protocol === 'file:' || protocol.includes('extension')) {
-              setEnvRestricted(true);
-              setAuthError("Environment Restricted: Google Auth requires http/https. Using Sandbox.");
-          }
-      }
-  }, []);
-
+  // --- 1. SESSION LISTENER ---
   useEffect(() => {
     if (!auth) { 
         setLoading(false); 
@@ -53,55 +44,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
+  // --- 2. LOGIN ACTION (WRAPPED) ---
   const signInWithGoogle = async () => {
-    if (!auth) {
-        const msg = "Firebase Core not initialized. Check your .env file or firebase.ts config.";
-        setAuthError(msg);
-        throw new Error(msg);
-    }
     setAuthError(null);
     try {
-        const result = await auth.signInWithPopup(googleProvider);
-        if (result.user) {
-            // 🔥 CRITICAL: Ensure Firestore Profile Exists immediately after login
-            await ensureUserProfile(result.user);
+        // Call the decoupled service
+        const user = await triggerGoogleLogin();
+        
+        if (user) {
+            // 🔥 CRITICAL: Ensure Firestore Profile Exists
+            await ensureUserProfile(user);
         }
     } catch (error: any) {
-        console.error("Login Error Full Object:", error);
+        console.error("Login Context Error:", error);
         
         let errorMsg = error.message || "Unknown Authentication Error";
 
-        // --- SMART ERROR HANDLING FOR FOUNDERS ---
-        if (error.code === 'auth/operation-not-supported-in-this-environment' || error.message?.includes('protocol')) {
-            setEnvRestricted(true);
-            errorMsg = "Setup Error: Google Auth requires a server (http://localhost), not a file.";
-        } else if (error.code === 'auth/popup-closed-by-user') {
+        // Smart Error Handling
+        if (error.code === 'auth/popup-closed-by-user') {
             errorMsg = "Login cancelled by user.";
         } else if (error.code === 'auth/unauthorized-domain') {
-            const currentDomain = window.location.hostname;
-            errorMsg = `Domain Blocked: Go to Firebase Console > Authentication > Settings > Authorized Domains and add "${currentDomain}"`;
-        } else if (error.code === 'auth/api-key-not-valid' || error.code === 'auth/invalid-api-key') {
-            errorMsg = "Config Error: Invalid Firebase API Key in .env or firebase.ts";
+            errorMsg = `Domain Blocked: Add "${window.location.hostname}" to Firebase Console > Authentication > Settings`;
         } else if (error.code === 'auth/network-request-failed') {
-            errorMsg = "Network Error: Check internet connection or firewall.";
-        } else if (error.message.includes("configuration")) {
-             errorMsg = "Firebase Config Missing. Check .env variables.";
+            errorMsg = "Network Error: Check internet connection.";
         }
 
         setAuthError(errorMsg);
-        // 🔥 CRITICAL: Re-throw so the UI component can alert() it
+        // Re-throw for UI alert
         throw new Error(errorMsg);
     }
   };
 
+  // --- 3. LOGOUT ACTION ---
   const logout = async () => {
     try {
         localStorage.removeItem('nexus_active_session');
-        // Clear sensitive local caches
         localStorage.removeItem('nexus_user_plan');
         setUser(null);
-        setIsDevMode(false);
-        if (auth) await auth.signOut();
+        await triggerLogout();
     } catch (error) {
         console.error("Logout error", error);
     }
@@ -120,9 +100,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           </div>
       );
   }
-
-  // NOTE: We don't block render if !user here, because App.tsx handles the routing logic
-  // to show LandingPage if not logged in.
   
   return (
     <AuthContext.Provider value={{ user, loading, signInWithGoogle, logout, authError, isDevMode }}>

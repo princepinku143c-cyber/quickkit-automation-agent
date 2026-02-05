@@ -18,7 +18,7 @@ import VideoModal from './components/VideoModal';
 import { SettingsModal } from './components/SettingsModal';
 import { Nexus, Synapse, Project, ExecutionState, NexusType, NexusSubtype, PlanTier, UserPlan } from './types';
 import { Play, Cloud, ShieldCheck, Info, Activity, AlertCircle, CheckCircle2, Save, AlertTriangle, Lock } from 'lucide-react';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { useAuth } from './context/AuthContext';
 import { subscribeToProjects, updateProject, createProject, deleteProject } from './services/projectService';
 import { listPromos } from './services/adminService'; 
 import { getUserProfile, updateUserProfile } from './services/userService'; 
