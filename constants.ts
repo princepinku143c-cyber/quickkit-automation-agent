@@ -20,7 +20,8 @@ export const RECAPTCHA_SITE_KEY = "6Lc6SDcsAAAAAOsn_zVFCI2vzlIKLB9AdLCtF5cD";
 // --- PLAN LIMITS (CONVERSION ENGINE) ---
 export const PLAN_LIMITS = {
   FREE: {
-    PROJECTS: 1,
+    PROJECTS: 2,
+    MAX_NODES: 10,
     AI_PROMPTS: 5,
     CLOUD_SAVE: false,
     LABEL: 'Explorer',
@@ -28,6 +29,7 @@ export const PLAN_LIMITS = {
   },
   PRO: {
     PROJECTS: 999, // Effectively Unlimited
+    MAX_NODES: 100,
     AI_PROMPTS: 200,
     CLOUD_SAVE: true,
     LABEL: 'Pro',
@@ -35,6 +37,7 @@ export const PLAN_LIMITS = {
   },
   BUSINESS: {
     PROJECTS: 9999,
+    MAX_NODES: 999,
     AI_PROMPTS: 1000,
     CLOUD_SAVE: true,
     LABEL: 'Business',

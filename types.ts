@@ -1,4 +1,9 @@
 
+/**
+ * ⚠️ CORE FILE – DO NOT MODIFY WITHOUT AUTHORIZATION
+ * Changes here can break auth, billing, and core logic.
+ */
+
 export enum NexusType {
   TRIGGER = 'TRIGGER',
   ACTION = 'ACTION',
@@ -306,7 +311,7 @@ export interface UserPlan {
     email: string;
     tier: PlanTier;
     region: Region;
-    role: UserRole; // Added Role
+    role: UserRole;
     status: 'active' | 'expired' | 'cancelled';
     expiresAt: number;
     updatedAt: number;
@@ -317,8 +322,11 @@ export interface UserPlan {
     appliedCoupon?: string;
     finalPrice?: number;
     credits: number;
+    aiUsed: number; // 🔥 ADDED: Tracks actual AI usage count against limit
     monthlyLimit: number;
     referralCode?: string;
+    createdAt?: number; 
+    onboardingDone?: boolean; 
 }
 
 // --- ADMIN SYSTEM TYPES ---

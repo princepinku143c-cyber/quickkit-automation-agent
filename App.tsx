@@ -15,12 +15,14 @@ import OnboardingModal from './components/OnboardingModal';
 import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage'; 
 import VideoModal from './components/VideoModal';
-import { SettingsModal } from './components/SettingsModal'; // New Import
+import { SettingsModal } from './components/SettingsModal';
 import { Nexus, Synapse, Project, ExecutionState, NexusType, NexusSubtype, PlanTier, UserPlan } from './types';
 import { Play, Cloud, ShieldCheck, Info, Activity, AlertCircle, CheckCircle2, Save, AlertTriangle, Lock } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { subscribeToProjects, updateProject, createProject, deleteProject } from './services/projectService';
 import { listPromos } from './services/adminService'; 
+import { getUserProfile, updateUserProfile } from './services/userService'; 
+import { canAddNode } from './services/usageGuard'; // 🔥 NEW
 import { DEFAULT_NODE_SETTINGS, PLAN_LIMITS } from './constants';
 
 // --- DATA SANITIZATION UTILITIES ---
@@ -87,7 +89,7 @@ const AppContent: React.FC = () => {
   const [nexuses, setNexuses] = useState<Nexus[]>([]);
   const [synapses, setSynapses] = useState<Synapse[]>([]);
   const [userPlan, setUserPlan] = useState<PlanTier>('FREE');
-  const [fullPlan, setFullPlan] = useState<UserPlan | null>(null); // Full plan object for settings
+  const [fullPlan, setFullPlan] = useState<UserPlan | null>(null); 
   
   // UI TOGGLES
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -99,7 +101,7 @@ const AppContent: React.FC = () => {
   const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false); // New Settings Toggle
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false); 
   
   // DEMO STATE
   const [isDemoOpen, setIsDemoOpen] = useState(false);
@@ -108,17 +110,24 @@ const AppContent: React.FC = () => {
   const [interruptedState, setInterruptedState] = useState<ExecutionState | null>(null);
   const lastSaveRef = useRef<number>(0);
 
-  // --- ROUTING LOGIC ---
+  // --- 1. AUTH & ROUTING SYNC ---
   useEffect(() => {
       if (user) {
           setAppRoute('app');
-          const hasOnboarded = localStorage.getItem('nexus_onboarding_complete');
-          if (!hasOnboarded) {
-              setIsOnboardingOpen(true);
-          }
+          // Fetch Real Profile from Firestore
+          getUserProfile(user.uid).then((profile) => {
+              if (profile) {
+                  setFullPlan(profile);
+                  setUserPlan(profile.tier);
+                  
+                  // Handle Onboarding based on DB flag
+                  if (!profile.onboardingDone) {
+                      setIsOnboardingOpen(true);
+                  }
+              }
+          });
           listPromos(); 
       } else {
-          // Keep current route unless it was 'app' (logout scenario)
           if (appRoute === 'app') setAppRoute('landing');
       }
   }, [user]);
@@ -132,30 +141,20 @@ const AppContent: React.FC = () => {
       setAppRoute('landing');
   };
 
-  const completeOnboarding = () => {
-      localStorage.setItem('nexus_onboarding_complete', 'true');
+  const completeOnboarding = async () => {
+      if (user) {
+          await updateUserProfile(user.uid, { onboardingDone: true });
+          // Update local state to prevent flicker
+          if (fullPlan) setFullPlan({ ...fullPlan, onboardingDone: true });
+      }
       setIsOnboardingOpen(false);
   };
 
-  // Rehydrate Plan from LocalStorage on mount (fallback)
+  // Rehydrate Plan from LocalStorage on mount (fallback until DB loads)
   useEffect(() => {
     const storedPlan = localStorage.getItem('nexus_user_plan');
-    if (storedPlan) {
-        // In real app, this is fetched from DB. Here we mock a full object if only string exists.
+    if (storedPlan && !fullPlan) {
         setUserPlan(storedPlan as PlanTier);
-        setFullPlan({ 
-            uid: user?.uid || 'anon', 
-            email: user?.email || 'anon', 
-            tier: storedPlan as PlanTier, 
-            region: 'GLOBAL', 
-            role: 'USER', 
-            status: 'active', 
-            expiresAt: Date.now() + 10000000, 
-            updatedAt: Date.now(), 
-            autoRenew: true, 
-            credits: 5, 
-            monthlyLimit: 5 
-        });
     }
 
     const saved = localStorage.getItem('nexus_interrupted_execution');
@@ -165,7 +164,7 @@ const AppContent: React.FC = () => {
         if (state.status === 'RUNNING') setInterruptedState(state);
       } catch (e) {}
     }
-  }, [user]);
+  }, []); // Run once
 
   // --- RENDER GATES ---
   if (!user && appRoute === 'landing') {
@@ -184,8 +183,10 @@ const AppContent: React.FC = () => {
   // APP LOGIC BELOW (Only rendered if user is logged in)
 
   const handleUpgrade = (newPlan: any) => {
+      // Optimistic Update
       setUserPlan(newPlan.tier);
-      setFullPlan(newPlan); // Store full plan object
+      setFullPlan(newPlan); 
+      // In real app, `paymentWorker` webhook updates DB, we just update local state here
       localStorage.setItem('nexus_user_plan', newPlan.tier);
       setIsPricingModalOpen(false);
   };
@@ -235,6 +236,8 @@ const AppContent: React.FC = () => {
   }, [user]);
 
   const handleCreateNewProject = async (title: string, desc: string) => {
+      // NOTE: Project limits are checked inside ProjectList.tsx already, 
+      // but double check here for safety? Not strictly needed as button is hidden.
       if (projects.length >= PLAN_LIMITS[userPlan].PROJECTS) {
           setIsPricingModalOpen(true);
           return;
@@ -315,6 +318,13 @@ const AppContent: React.FC = () => {
   }, []);
 
   const handleAddNexus = useCallback((type: NexusType, subtype: NexusSubtype, dropPosition?: { x: number, y: number }) => {
+      // 🔥 USAGE GUARD: CHECK NODE LIMIT
+      if (fullPlan && !canAddNode(fullPlan, nexuses.length)) {
+          alert(`Plan limit reached! Maximum ${PLAN_LIMITS[userPlan].MAX_NODES} nodes per workflow on ${userPlan} plan.`);
+          setIsPricingModalOpen(true);
+          return;
+      }
+
       const id = `n-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
       setNexuses(prev => {
           let safeX = 100;
@@ -332,7 +342,7 @@ const AppContent: React.FC = () => {
       });
       setSelectedId(id);
       setIsPropertiesOpen(true);
-  }, [selectedId]);
+  }, [nexuses.length, fullPlan, userPlan, selectedId]);
 
   const handleApplyStream = (newNexuses: Nexus[], newSynapses: Synapse[]) => {
       const cleanNodes = sanitizeNodes(newNexuses).map((n, i) => {
@@ -359,7 +369,7 @@ const AppContent: React.FC = () => {
           isOpen={isSettingsOpen} 
           onClose={() => setIsSettingsOpen(false)} 
           onUpgrade={() => setIsPricingModalOpen(true)}
-          userPlan={fullPlan || { tier: 'FREE', autoRenew: true }}
+          userPlan={fullPlan || { tier: 'FREE', autoRenew: true, credits: 5, aiUsed: 0, monthlyLimit: 5, uid: user?.uid || '', email: user?.email || '', region: 'GLOBAL', role: 'USER', status: 'active', expiresAt: 0, updatedAt: Date.now() }}
       />
 
       {interruptedState && (
@@ -388,7 +398,7 @@ const AppContent: React.FC = () => {
         onAddNexus={handleAddNexus}
         onLoadBlueprint={(bp) => handleApplyStream(bp.nexuses, bp.synapses)}
         onClear={() => { setNexuses([]); setSynapses([]); }}
-        onOpenSettings={() => setIsSettingsOpen(true)} // Wire up settings
+        onOpenSettings={() => setIsSettingsOpen(true)} 
         onNavigateProjects={handleNavigateDashboard}
         currentView={currentView}
         onOpenCredentials={() => setIsCredentialManagerOpen(true)}
@@ -410,7 +420,10 @@ const AppContent: React.FC = () => {
             )}
           </div>
           <div className="flex items-center gap-2">
-             {/* Additional Header Controls if any */}
+             {/* Plan Badge in Header */}
+             <div className="text-[9px] font-black uppercase bg-nexus-900 border border-nexus-800 px-2 py-1 rounded text-nexus-accent">
+                 {userPlan} PLAN
+             </div>
           </div>
         </div>
 
@@ -437,8 +450,6 @@ const AppContent: React.FC = () => {
                     onNexusUpdate={handleNexusUpdate}
                     onNodeAction={(action, id) => {
                         if (action === 'DELETE') handleDeleteNexus(id);
-                        if (action === 'RUN') { /* run logic */ }
-                        // ... other actions
                     }}
                     onAddNexus={handleAddNexus}
                 />
@@ -449,8 +460,8 @@ const AppContent: React.FC = () => {
                         onClose={() => { setIsPropertiesOpen(false); setSelectedId(null); }}
                         onUpdate={handleNexusUpdate}
                         onDelete={handleDeleteNexus}
-                        credentials={[]} // Pass credentials if available
-                        onTest={() => setIsRunModalOpen(true)} // Or specific node test
+                        credentials={[]} 
+                        onTest={() => setIsRunModalOpen(true)} 
                     />
                 )}
             </div>

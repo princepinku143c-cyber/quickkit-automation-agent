@@ -1,4 +1,9 @@
 
+/**
+ * ⚠️ CORE FILE – DO NOT MODIFY WITHOUT AUTHORIZATION
+ * Changes here can break auth, billing, and core logic.
+ */
+
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 import 'firebase/compat/firestore';

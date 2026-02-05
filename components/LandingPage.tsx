@@ -22,6 +22,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onDemo }) => {
       if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const handleDocsClick = () => {
+      alert("HOW NEXUSSTREAM WORKS:\n\n1. Sign in with Google.\n2. Describe your workflow to the AI Architect.\n3. Verify the logic on the Visual Canvas.\n4. Test run securely before deployment.\n\nFull documentation is currently being written.");
+  };
+
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-nexus-accent/30 overflow-x-hidden">
       
@@ -38,7 +42,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onDemo }) => {
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-400">
             <button onClick={() => scrollToSection('features')} className="hover:text-white transition-colors">Features</button>
             <button onClick={() => scrollToSection('pricing')} className="hover:text-white transition-colors">Pricing</button>
-            <button onClick={() => alert("Docs coming soon!")} className="hover:text-white transition-colors">Docs</button>
+            <button onClick={handleDocsClick} className="hover:text-white transition-colors">How it Works</button>
           </nav>
 
           <div className="flex items-center gap-4">
@@ -109,7 +113,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onDemo }) => {
         </div>
       </section>
 
-      {/* FEATURES / CLARITY SECTION (Added ID) */}
+      {/* FEATURES / CLARITY SECTION */}
       <section id="features" className="py-24 border-t border-white/5 bg-[#080808]">
         <div className="max-w-7xl mx-auto px-6">
             <div className="text-center mb-16">
@@ -266,7 +270,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onDemo }) => {
       <footer className="py-12 border-t border-white/5 text-center text-xs text-gray-600">
           <div className="flex justify-center gap-8 mb-8 font-bold uppercase tracking-widest">
               <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
-              <a href="#" className="hover:text-white transition-colors">Docs</a>
+              <button onClick={handleDocsClick} className="hover:text-white transition-colors">How it Works</button>
               <a href="#" className="hover:text-white transition-colors">Privacy</a>
               <a href="#" className="hover:text-white transition-colors">Terms</a>
           </div>

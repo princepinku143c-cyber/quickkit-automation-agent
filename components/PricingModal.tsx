@@ -207,7 +207,8 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
           lastPaymentId: txnId,
           provider: provider,
           credits: selectedPaidTier === 'PRO' ? 5000 : 20000, 
-          monthlyLimit: selectedPaidTier === 'PRO' ? 5000 : 20000
+          monthlyLimit: selectedPaidTier === 'PRO' ? 5000 : 20000,
+          aiUsed: 0
       };
 
       if (onUpgrade) onUpgrade(newPlan);

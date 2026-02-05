@@ -216,6 +216,7 @@ export const processPaymentSuccess = async (userId: string, email: string, detai
         autoRenew: details.autoRenew, 
         credits: 5000, 
         monthlyLimit: 5000,
-        role: 'USER'
+        role: 'USER',
+        aiUsed: 0
     };
 };

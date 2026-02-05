@@ -6,6 +6,8 @@ import { Nexus, Synapse, ChatMessage, PlanTier } from '../types';
 import { ArchitectResponse, Decision } from '../services/architect/types';
 import { saveArchitectMemory } from '../services/cloudStore';
 import { PLAN_LIMITS } from '../constants';
+import { checkAndIncrementAI } from '../services/usageGuard'; // 🔥 NEW IMPORT
+import { useAuth } from '../context/AuthContext'; // To get uid
 
 interface AIAssistantProps {
   isOpen: boolean;
@@ -21,20 +23,17 @@ interface AIAssistantProps {
 const AIAssistant: React.FC<AIAssistantProps> = ({ 
   isOpen, onClose, onApplyStream, currentNexuses, currentSynapses, projectContext = "New Workflow", userPlan = 'FREE', onUpgrade
 }) => {
+  const { user } = useAuth();
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pendingChanges, setPendingChanges] = useState<ArchitectResponse | null>(null);
   const [thinkingStep, setThinkingStep] = useState<string>('');
-  const [promptCount, setPromptCount] = useState(0);
+  
+  // Note: We no longer track local 'promptCount' for logic, only for immediate UI feedback if needed.
+  // The authority is now Firestore via checkAndIncrementAI.
   
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  // --- 1. TRACK USAGE (PERSISTENT) ---
-  useEffect(() => {
-      const stored = localStorage.getItem('nexus_ai_usage');
-      if (stored) setPromptCount(parseInt(stored));
-  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -57,16 +56,18 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     e?.preventDefault();
     if (!input.trim() || isLoading) return;
 
-    // --- PLAN ENFORCEMENT: CHECK LIMIT ---
-    const limit = PLAN_LIMITS[userPlan].AI_PROMPTS;
-    if (promptCount >= limit) {
-        setMessages(prev => [...prev, { 
-            id: Date.now().toString(), 
-            role: 'system', 
-            content: `🔒 **Free Plan Limit Reached.**\n\nYou’ve used all ${limit} free AI prompts.\nUpgrade to Pro to continue designing workflows with AI.`, 
-            timestamp: Date.now() 
-        }]);
-        return;
+    // --- 🔥 REAL SAAS USAGE GUARD ---
+    if (user) {
+        const allowed = await checkAndIncrementAI(user.uid);
+        if (!allowed) {
+            setMessages(prev => [...prev, { 
+                id: Date.now().toString(), 
+                role: 'system', 
+                content: `🔒 **Free Plan Limit Reached.**\n\nYou’ve used all your free AI prompts for this month.\nUpgrade to Pro to continue designing workflows with AI.`, 
+                timestamp: Date.now() 
+            }]);
+            return;
+        }
     }
 
     const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', content: input, timestamp: Date.now() };
@@ -74,11 +75,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     setInput('');
     setIsLoading(true);
     setPendingChanges(null);
-
-    // Increment Usage
-    const nextCount = promptCount + 1;
-    setPromptCount(nextCount);
-    localStorage.setItem('nexus_ai_usage', nextCount.toString());
 
     const steps = [
         "Synthesizing Requirements...", 
@@ -93,7 +89,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     }, 1500);
 
     try {
-      // System API Key is empty as it pulls from process.env.API_KEY internally
       const result = await chatWithArchitect(userMsg.content, messages, "", currentNexuses, currentSynapses, projectContext);
       
       clearInterval(interval);
@@ -107,11 +102,9 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           metadata: result 
       }]);
 
-      // Only show Apply button if VALID changes exist
       if ((result.patch || result.fullBlueprint) && !result.validationError) {
           setPendingChanges(result);
       } else if (result.validationError) {
-          // Log specific validation error to UI for transparency
           setMessages(prev => [...prev, {
               id: Date.now().toString(),
               role: 'system',
@@ -123,7 +116,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     } catch (err: any) {
       clearInterval(interval);
       setThinkingStep('');
-      // This catch block handles network-level errors not caught by the architect wrapper
       setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', content: `CRITICAL FAULT: ${err.message}. Connection reset.`, timestamp: Date.now() }]);
     } finally {
       setIsLoading(false);
@@ -131,24 +123,20 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   };
 
   const handleAnalysis = async (intent: 'VALIDATE' | 'EXPLAIN' | 'OPTIMIZE') => {
-      // Analysis also counts towards usage
-      const limit = PLAN_LIMITS[userPlan].AI_PROMPTS;
-      if (promptCount >= limit) {
-          setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', content: `🔒 Limit Reached. Upgrade to run analysis.`, timestamp: Date.now() }]);
-          return;
+      // Analysis also consumes quota
+      if (user) {
+          const allowed = await checkAndIncrementAI(user.uid);
+          if (!allowed) {
+              setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', content: `🔒 Limit Reached. Upgrade to run analysis.`, timestamp: Date.now() }]);
+              return;
+          }
       }
 
       if (isLoading) return;
       setIsLoading(true);
       setThinkingStep(`Running ${intent.toLowerCase()} analysis protocol...`);
       
-      // Increment Usage
-      const nextCount = promptCount + 1;
-      setPromptCount(nextCount);
-      localStorage.setItem('nexus_ai_usage', nextCount.toString());
-
       try {
-          // Fake a user message for context
           const labels = { 'VALIDATE': 'Run QA Check', 'EXPLAIN': 'Explain this flow', 'OPTIMIZE': 'Optimize Logic' };
           const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', content: `[SYSTEM COMMAND]: ${labels[intent]}`, timestamp: Date.now() };
           setMessages(prev => [...prev, userMsg]);
@@ -199,8 +187,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
               onApplyStream(newNodes, newSynapses);
           }
 
-          // --- TRAINING LOOP: SAVE SUCCESSFUL INTERACTION ---
-          // Get the last user prompt that triggered this change
           const lastUserMsg = messages.filter(m => m.role === 'user' && !m.content.startsWith('[SYSTEM')).pop();
           if (lastUserMsg) {
               await saveArchitectMemory(lastUserMsg.content, appliedNodes, appliedSynapses);
@@ -216,10 +202,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   if (!isOpen) return null;
 
-  // Usage Progress Calculation
   const limit = PLAN_LIMITS[userPlan].AI_PROMPTS;
-  const usagePercent = Math.min((promptCount / limit) * 100, 100);
-  const isLimitReached = promptCount >= limit;
 
   return (
     <div className="fixed inset-y-0 right-0 w-[520px] bg-[#030303]/98 backdrop-blur-3xl border-l border-white/10 z-[100] flex flex-col shadow-[0_0_100px_rgba(0,0,0,0.8)] animate-in slide-in-from-right duration-500 font-sans">
@@ -306,15 +289,12 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
         {/* ACTIONS */}
         <div className="p-8 border-t border-white/10 bg-black/60 backdrop-blur-2xl">
-            {/* USAGE METER */}
+            {/* USAGE METER - VISUAL ONLY, LOGIC IS SERVER SIDE */}
             <div className="mb-4 flex items-center justify-between text-[9px] font-black text-gray-500 uppercase tracking-widest">
                 <span className="flex items-center gap-2">
-                    <Activity size={10} className={isLimitReached ? "text-red-500" : "text-nexus-success"}/> AI Fuel
+                    <Activity size={10} className="text-nexus-success"/> AI Fuel
                 </span>
-                <span>{promptCount} / {limit} Prompts</span>
-            </div>
-            <div className="h-1 bg-white/10 rounded-full overflow-hidden mb-6">
-                <div className={`h-full transition-all duration-500 ${isLimitReached ? 'bg-red-500' : 'bg-nexus-success'}`} style={{ width: `${usagePercent}%` }}></div>
+                <span>{limit === 9999 ? 'Unlimited' : `Monthly Limit: ${limit}`}</span>
             </div>
 
             {pendingChanges && (
@@ -348,21 +328,21 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
             <div className="grid grid-cols-3 gap-2 mb-4">
                 <button 
                     onClick={() => handleAnalysis('VALIDATE')}
-                    disabled={isLoading || isLimitReached}
+                    disabled={isLoading}
                     className="flex items-center justify-center gap-2 py-3 bg-red-900/10 border border-red-900/30 hover:bg-red-900/20 text-red-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
                 >
                     <ShieldCheck size={14}/> QA Check
                 </button>
                 <button 
                     onClick={() => handleAnalysis('EXPLAIN')}
-                    disabled={isLoading || isLimitReached}
+                    disabled={isLoading}
                     className="flex items-center justify-center gap-2 py-3 bg-blue-900/10 border border-blue-900/30 hover:bg-blue-900/20 text-blue-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
                 >
                     <BookOpen size={14}/> Explain
                 </button>
                 <button 
                     onClick={() => handleAnalysis('OPTIMIZE')}
-                    disabled={isLoading || isLimitReached}
+                    disabled={isLoading}
                     className="flex items-center justify-center gap-2 py-3 bg-nexus-accent/10 border border-nexus-accent/20 hover:bg-nexus-accent/20 text-nexus-accent rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
                 >
                     <Zap size={14}/> Optimize
@@ -374,16 +354,16 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                     type="text" 
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder={isLimitReached ? "Usage limit reached." : "Describe what you want to build..."}
-                    className={`w-full bg-[#080808] border rounded-2xl pl-6 pr-16 py-5 text-sm text-white focus:ring-1 outline-none transition-all placeholder:text-gray-800 ${isLimitReached ? 'border-red-900/30 cursor-not-allowed opacity-50' : 'border-white/10 focus:border-nexus-accent focus:ring-nexus-accent/30'}`}
-                    disabled={isLoading || isLimitReached}
+                    placeholder="Describe what you want to build..."
+                    className={`w-full bg-[#080808] border rounded-2xl pl-6 pr-16 py-5 text-sm text-white focus:ring-1 outline-none transition-all placeholder:text-gray-800 border-white/10 focus:border-nexus-accent focus:ring-nexus-accent/30`}
+                    disabled={isLoading}
                 />
                 <button 
                     type="submit" 
-                    disabled={!input.trim() || isLoading || isLimitReached}
-                    className={`absolute right-3 top-3 bottom-3 aspect-square rounded-xl hover:scale-105 transition-all disabled:opacity-0 disabled:scale-90 flex items-center justify-center shadow-lg ${isLimitReached ? 'bg-gray-800 text-gray-500' : 'bg-nexus-accent text-black'}`}
+                    disabled={!input.trim() || isLoading}
+                    className={`absolute right-3 top-3 bottom-3 aspect-square rounded-xl hover:scale-105 transition-all disabled:opacity-0 disabled:scale-90 flex items-center justify-center shadow-lg bg-nexus-accent text-black`}
                 >
-                    {isLimitReached ? <Lock size={18}/> : <ArrowRight size={22} strokeWidth={3} />}
+                    <ArrowRight size={22} strokeWidth={3} />
                 </button>
             </form>
             
