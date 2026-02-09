@@ -17,6 +17,21 @@ import {
 
 export const RECAPTCHA_SITE_KEY = "6Lc6SDcsAAAAAOsn_zVFCI2vzlIKLB9AdLCtF5cD";
 
+// 🔥 PAYPAL PLAN IDS (From Developer Dashboard)
+// STEP 7: Replace these with your actual Plan IDs from PayPal Dashboard
+export const PAYPAL_PLAN_IDS = {
+    PRO_MONTHLY: 'P-5ML4271244454362WXSMG7TQ', // Example Sandbox ID
+    PRO_YEARLY: 'P-YEARLY_PLAN_ID_HERE'
+};
+
+// 🔥 AI MODEL STRATEGY (BUDGET OPTIMIZED)
+export const AI_MODELS = {
+  ARCHITECT: 'gemini-3-pro-preview',      // High Intelligence (Planning & Reasoning) - Higher Cost
+  RUNTIME: 'gemini-3-flash-preview',      // High Speed (Execution & Agents) - Low Cost
+  VISION: 'gemini-3-pro-image-preview',   // Visual Tasks
+  VIDEO: 'veo-3.1-fast-generate-preview'  // Video Gen
+};
+
 // --- PLAN LIMITS (CONVERSION ENGINE) ---
 export const PLAN_LIMITS = {
   FREE: {
@@ -30,7 +45,7 @@ export const PLAN_LIMITS = {
   PRO: {
     PROJECTS: 999, // Effectively Unlimited
     MAX_NODES: 100,
-    AI_PROMPTS: 200,
+    AI_PROMPTS: 100000, // UX says "Unlimited", backend uses high soft cap for fair use
     CLOUD_SAVE: true,
     LABEL: 'Pro',
     PRICE: '$49'
@@ -38,17 +53,17 @@ export const PLAN_LIMITS = {
   BUSINESS: {
     PROJECTS: 9999,
     MAX_NODES: 999,
-    AI_PROMPTS: 1000,
+    AI_PROMPTS: 1000000, // Unlimited
     CLOUD_SAVE: true,
     LABEL: 'Business',
-    PRICE: '$99'
+    PRICE: 'Custom' // Changed from $99 to Custom/Contact Sales
   }
 };
 
 export const ADDON_PACKS: AddOnPack[] = [
     {
         id: 'pack_50',
-        name: 'Starter Boost',
+        name: 'Starter Fuel',
         credits: 50,
         price: { IN: 299, GLOBAL: 5 }
     },
@@ -541,7 +556,7 @@ export const NEXUS_DEFINITIONS: NexusDefinition[] = [
     category: 'AI & Intelligence',
     defaultConfig: { 
       provider: 'gemini', 
-      model: 'gemini-3-flash-preview', 
+      model: AI_MODELS.RUNTIME, // 🔥 BUDGET LOCK
       systemMessage: 'You are a helpful assistant.',
       enabledTools: [] 
     },
@@ -556,6 +571,7 @@ export const NEXUS_DEFINITIONS: NexusDefinition[] = [
     category: 'AI & Intelligence',
     defaultConfig: { 
       prompt: '{{input.text}}', 
+      model: AI_MODELS.VIDEO,
       videoResolution: '720p',
       videoAspectRatio: '16:9'
     },
@@ -592,7 +608,10 @@ export const NEXUS_DEFINITIONS: NexusDefinition[] = [
     icon: FileJson,
     description: 'Extract structured JSON from text.',
     category: 'AI & Intelligence',
-    defaultConfig: { extractionSchema: '{ "name": "string", "age": "number" }' },
+    defaultConfig: { 
+        model: AI_MODELS.RUNTIME, // 🔥 BUDGET LOCK
+        extractionSchema: '{ "name": "string", "age": "number" }' 
+    },
     requirements: { cost: 'FREE', signup: 'GOOGLE', description: 'Uses Gemini.' }
   },
 ];

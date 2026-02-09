@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { validateCoupon } from '../services/cloudStore';
 import { PaymentGateway } from '../services/paymentGateway';
 import LegalModal from './LegalModal';
-import { PLAN_LIMITS } from '../constants';
+import { PLAN_LIMITS, PAYPAL_PLAN_IDS } from '../constants';
 
 interface PricingModalProps {
   isOpen: boolean;
@@ -38,6 +38,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
 
   const [autoRenew, setAutoRenew] = useState(true);
   const paypalContainerRef = useRef<HTMLDivElement>(null);
+  const paypalScriptLoaded = useRef(false);
 
   // --- PRICING CONFIGURATION ---
   const prices = {
@@ -103,7 +104,10 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
   };
 
   const getFinalAmount = () => {
-      const priceObj = prices[region][selectedPaidTier === 'BUSINESS' ? 'BUSINESS' : 'PRO'];
+      // Logic only for PRO since BUSINESS is custom/contact
+      if (selectedPaidTier === 'BUSINESS') return 0;
+
+      const priceObj = prices[region]['PRO'];
       const baseAmount = billingCycle === 'monthly' ? priceObj.monthly : priceObj.yearly;
       
       if (appliedCoupon) {
@@ -119,7 +123,8 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
   };
 
   const getBaseAmount = () => {
-      const priceObj = prices[region][selectedPaidTier === 'BUSINESS' ? 'BUSINESS' : 'PRO'];
+      if (selectedPaidTier === 'BUSINESS') return 0;
+      const priceObj = prices[region]['PRO'];
       return billingCycle === 'monthly' ? priceObj.monthly : priceObj.yearly;
   };
 
@@ -148,6 +153,8 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
 
   // --- PAYMENT FLOW HANDLER ---
   const handlePaymentStart = async () => {
+      if (selectedPaidTier === 'BUSINESS') return; // Should not happen via this flow
+
       if (!agreedToTerms) { alert("Please agree to the Terms of Service."); return; }
       
       setUiState('PROCESSING');
@@ -166,8 +173,6 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
                   user.email || 'guest',
                   async (response) => {
                       // 3. Verify on Backend
-                      // Note: In real production, the webhook handles this asynchronously.
-                      // But for UI feedback, we poll or call a verify endpoint.
                       setUiState('PROCESSING'); 
                       const isValid = await PaymentGateway.verifyBackend(response);
                       if (isValid) {
@@ -206,8 +211,8 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
           autoRenew: true, 
           lastPaymentId: txnId,
           provider: provider,
-          credits: selectedPaidTier === 'PRO' ? 5000 : 20000, 
-          monthlyLimit: selectedPaidTier === 'PRO' ? 5000 : 20000,
+          credits: selectedPaidTier === 'PRO' ? 100000 : 1000000, 
+          monthlyLimit: selectedPaidTier === 'PRO' ? 100000 : 1000000,
           aiUsed: 0
       };
 
@@ -215,48 +220,92 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
       setUiState('SUCCESS');
   };
 
-  // --- PAYPAL RENDERER ---
+  const handleContactSales = () => {
+      window.location.href = "mailto:sales@nexusstream.ai?subject=Business Plan Inquiry";
+  };
+
+  // --- DYNAMIC PAYPAL LOADER & RENDERER ---
   useEffect(() => {
-    if (isOpen && region === 'GLOBAL' && uiState === 'SUMMARY' && paypalContainerRef.current) {
-        paypalContainerRef.current.innerHTML = '';
-        try {
+    // Only load/render if Global (Not India), Summary Screen, Not Business Plan
+    if (isOpen && region === 'GLOBAL' && uiState === 'SUMMARY' && selectedPaidTier !== 'BUSINESS' && paypalContainerRef.current) {
+        
+        // 1. DYNAMICALLY LOAD SCRIPT
+        const loadPayPal = async () => {
+            if (paypalScriptLoaded.current) return Promise.resolve();
             // @ts-ignore
             if (window.paypal) {
-                // @ts-ignore
-                window.paypal.Buttons({
-                    style: { layout: 'vertical', color: 'blue', shape: 'rect', label: 'pay' },
-                    createSubscription: (data: any, actions: any) => {
-                        return actions.subscription.create({
-                            plan_id: "P-YOUR_REAL_PLAN_ID" 
-                        });
-                    },
-                    onApprove: async (data: any, actions: any) => {
-                        setUiState('PROCESSING');
-                        const isValid = await PaymentGateway.verifyBackend({ subscriptionId: data.subscriptionID });
-                        if (isValid) {
-                            completeUpgrade(data.subscriptionID, 'PAYPAL');
-                        } else {
-                            setUiState('ERROR');
-                            setErrorMessage("Subscription Verification Failed");
-                        }
-                    },
-                    onError: (err: any) => {
-                        console.warn("PayPal Error", err);
-                        // Fallback simulation for demo
-                        handlePaymentStart(); 
-                    }
-                }).render(paypalContainerRef.current);
-            } else {
-               // Fallback button
-               const btn = document.createElement('button');
-               btn.className = "w-full py-4 bg-blue-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-blue-700 transition-all";
-               btn.innerHTML = `<span>Pay via PayPal</span>`;
-               btn.onclick = handlePaymentStart;
-               paypalContainerRef.current.appendChild(btn);
+                paypalScriptLoaded.current = true;
+                return Promise.resolve();
             }
-        } catch (e) {
-            console.error("PayPal Load Error", e);
-        }
+
+            // Using Vite environment variable as per user request
+            // @ts-ignore
+            const clientID = import.meta.env.VITE_PAYPAL_CLIENT_ID;
+            if (!clientID) {
+                console.error("VITE_PAYPAL_CLIENT_ID missing");
+                return Promise.reject("PayPal Client ID Not Found");
+            }
+
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = `https://www.paypal.com/sdk/js?client-id=${clientID}&vault=true&intent=subscription`;
+                script.onload = () => {
+                    paypalScriptLoaded.current = true;
+                    resolve(true);
+                };
+                script.onerror = () => reject("PayPal Script Failed");
+                document.body.appendChild(script);
+            });
+        };
+
+        // 2. RENDER BUTTONS
+        loadPayPal().then(() => {
+            if (!paypalContainerRef.current) return;
+            paypalContainerRef.current.innerHTML = '';
+            
+            try {
+                // @ts-ignore
+                if (window.paypal) {
+                    const planId = billingCycle === 'monthly' ? PAYPAL_PLAN_IDS.PRO_MONTHLY : PAYPAL_PLAN_IDS.PRO_YEARLY;
+                    
+                    // @ts-ignore
+                    window.paypal.Buttons({
+                        style: { layout: 'vertical', color: 'blue', shape: 'rect', label: 'pay' },
+                        createSubscription: (data: any, actions: any) => {
+                            return actions.subscription.create({
+                                'plan_id': planId
+                            });
+                        },
+                        onApprove: async (data: any, actions: any) => {
+                            setUiState('PROCESSING');
+                            const isValid = await PaymentGateway.verifyBackend({ subscriptionId: data.subscriptionID });
+                            if (isValid) {
+                                completeUpgrade(data.subscriptionID, 'PAYPAL');
+                            } else {
+                                setUiState('ERROR');
+                                setErrorMessage("Subscription Verification Failed");
+                            }
+                        },
+                        onError: (err: any) => {
+                            console.warn("PayPal Error", err);
+                            // Fallback simulation for dev mode if needed
+                            // handlePaymentStart(); 
+                        }
+                    }).render(paypalContainerRef.current);
+                }
+            } catch (e) {
+                console.error("PayPal Render Error", e);
+            }
+        }).catch(err => {
+            console.error("PayPal Load Error:", err);
+            // Fallback UI
+            if (paypalContainerRef.current) {
+                const btn = document.createElement('button');
+                btn.className = "w-full py-4 bg-gray-800 text-gray-400 font-bold rounded-xl flex items-center justify-center gap-2 cursor-not-allowed";
+                btn.innerHTML = `<span>PayPal Unavailable (Config Error)</span>`;
+                paypalContainerRef.current.appendChild(btn);
+            }
+        });
     }
   }, [isOpen, region, uiState, selectedPaidTier, billingCycle, appliedCoupon]);
 
@@ -361,7 +410,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
 
                 {/* PLANS GRID */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* FREE PLAN */}
+                    {/* EXPLORER (FREE) PLAN */}
                     <div className="p-8 rounded-[32px] border border-nexus-800 bg-nexus-900/30 flex flex-col">
                         <div className="mb-4">
                             <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">{PLAN_LIMITS.FREE.LABEL}</h3>
@@ -374,7 +423,10 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
                             <li className="flex gap-2"><Check size={14} className="text-nexus-accent"/> Visual Canvas</li>
                             <li className="flex gap-2 text-gray-600"><X size={14}/> Cloud Save</li>
                         </ul>
-                        <button disabled className="w-full py-4 bg-nexus-800 text-gray-500 rounded-2xl text-[10px] font-black uppercase cursor-not-allowed">Active Plan</button>
+                        <div className="mt-auto">
+                            <div className="text-[9px] text-gray-500 text-center mb-2">Need more prompts? Buy AI Fuel via Settings.</div>
+                            <button disabled className="w-full py-4 bg-nexus-800 text-gray-500 rounded-2xl text-[10px] font-black uppercase cursor-not-allowed">Active Plan</button>
+                        </div>
                     </div>
 
                     {/* PRO PLAN */}
@@ -384,32 +436,31 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
                             <div className="text-xs font-black text-nexus-accent uppercase tracking-widest mb-1">{PLAN_LIMITS.PRO.LABEL}</div>
                             <div className="text-4xl font-black text-white">{currentPrices.symbol}{billingCycle === 'monthly' ? currentPrices.PRO.monthly : currentPrices.PRO.yearly} <span className="text-sm font-medium text-gray-500">/ {billingCycle === 'monthly' ? 'mo' : 'yr'}</span></div>
                             {billingCycle === 'yearly' && <p className="text-[10px] text-nexus-success mt-1 font-bold">🎉 2 Months Free applied</p>}
-                            <p className="text-[10px] text-gray-400 mt-2">For professionals designing real automations.</p>
+                            <p className="text-[10px] text-gray-400 mt-2">No prompt limits. Just design.</p>
                         </div>
                         <ul className="space-y-3 mb-8 text-[11px] text-gray-300 flex-1">
                             <li className="flex gap-2"><Check size={14} className="text-nexus-accent"/> Unlimited Workflows</li>
-                            <li className="flex gap-2"><Check size={14} className="text-nexus-accent"/> 200 AI Prompts / mo</li>
+                            <li className="flex gap-2"><Check size={14} className="text-nexus-accent"/> <strong className="text-white">Unlimited Architect AI</strong></li>
                             <li className="flex gap-2"><Check size={14} className="text-nexus-accent"/> Cloud Save & History</li>
                             <li className="flex gap-2"><Check size={14} className="text-nexus-accent"/> Design-Only Channels</li>
                         </ul>
                         <button onClick={() => setUiState('SUMMARY')} className="w-full py-4 bg-nexus-accent text-black rounded-2xl text-[10px] font-black uppercase hover:scale-105 transition-all shadow-lg">Upgrade to Pro</button>
                     </div>
 
-                    {/* BUSINESS PLAN */}
-                    <div className={`p-8 rounded-[32px] border-2 transition-all cursor-pointer flex flex-col ${selectedPaidTier === 'BUSINESS' ? 'border-nexus-wire bg-nexus-wire/5' : 'border-nexus-800 bg-nexus-900/50'}`} onClick={() => setSelectedPaidTier('BUSINESS')}>
+                    {/* BUSINESS PLAN - NO PRICE DISPLAY */}
+                    <div className="p-8 rounded-[32px] border border-nexus-800 bg-nexus-900/50 flex flex-col">
                         <div className="mb-4">
-                            <div className="text-xs font-black text-nexus-wire uppercase tracking-widest mb-1">{PLAN_LIMITS.BUSINESS.LABEL}</div>
-                            <div className="text-4xl font-black text-white">{currentPrices.symbol}{billingCycle === 'monthly' ? currentPrices.BUSINESS.monthly : currentPrices.BUSINESS.yearly} <span className="text-sm font-medium text-gray-500">/ {billingCycle === 'monthly' ? 'mo' : 'yr'}</span></div>
-                            {billingCycle === 'yearly' && <p className="text-[10px] text-nexus-success mt-1 font-bold">🎉 2 Months Free applied</p>}
+                            <div className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">{PLAN_LIMITS.BUSINESS.LABEL}</div>
+                            <div className="text-4xl font-black text-white">Custom</div>
                             <p className="text-[10px] text-gray-400 mt-2">For teams collaborating on automation design.</p>
                         </div>
                         <ul className="space-y-3 mb-8 text-[11px] text-gray-300 flex-1">
-                            <li className="flex gap-2"><Check size={14} className="text-nexus-wire"/> Everything in Pro</li>
-                            <li className="flex gap-2"><Check size={14} className="text-nexus-wire"/> Team Collaboration</li>
-                            <li className="flex gap-2"><Check size={14} className="text-nexus-wire"/> 500+ AI Prompts</li>
-                            <li className="flex gap-2"><Check size={14} className="text-nexus-wire"/> Audit Logs</li>
+                            <li className="flex gap-2"><Check size={14} className="text-white"/> Everything in Pro</li>
+                            <li className="flex gap-2"><Check size={14} className="text-white"/> Team Collaboration</li>
+                            <li className="flex gap-2"><Check size={14} className="text-white"/> Audit Logs</li>
+                            <li className="flex gap-2"><Check size={14} className="text-white"/> SLA Support</li>
                         </ul>
-                        <button onClick={() => setUiState('SUMMARY')} className="w-full py-4 bg-nexus-wire text-black rounded-2xl text-[10px] font-black uppercase hover:scale-105 transition-all shadow-lg">Contact Sales</button>
+                        <button onClick={handleContactSales} className="w-full py-4 bg-white text-black rounded-2xl text-[10px] font-black uppercase hover:bg-gray-200 transition-all shadow-lg">Contact Sales</button>
                     </div>
                 </div>
 
@@ -425,7 +476,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
             </div>
           )}
 
-          {uiState === 'SUMMARY' && (
+          {uiState === 'SUMMARY' && selectedPaidTier === 'PRO' && (
              <div className="max-w-2xl mx-auto space-y-6 animate-in slide-in-from-right">
                 <div className="bg-nexus-900/50 border border-nexus-800 p-8 rounded-[32px]">
                     <div className="flex justify-between items-center mb-8">

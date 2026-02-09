@@ -9,6 +9,7 @@ import { findSimilarWorkflows } from '../memoryService';
 import { getArchitectMemories } from '../cloudStore';
 import { callAIWithTimeout } from '../geminiService';
 import { safeJsonParse, validateArchitectResponse } from './responseParser';
+import { AI_MODELS } from '../../constants';
 
 const applySmartLayout = (currentNodes: Nexus[], newNodes: Nexus[]): Nexus[] => {
     let maxX = currentNodes.length > 0 ? Math.max(...currentNodes.map(n => n.position.x)) + 400 : 100;
@@ -49,8 +50,9 @@ export const processArchitectRequest = async (
 
     const baseInstruction = `${ARCHITECT_PERSONA}\n\nTOOLS:\n${toolsContext}\n\nCANVAS_STATE:\n${canvasState}\n\n${learnedPatterns}`;
     
-    // Using gemini-3-pro-preview for complex architectural reasoning
-    const model = 'gemini-3-pro-preview';
+    // 🔥 ENFORCED STRATEGY: Architect uses Pro for reasoning
+    const model = AI_MODELS.ARCHITECT;
+    
     const client = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     try {

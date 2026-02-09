@@ -78,6 +78,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const planName = PLAN_LIMITS[userPlan.tier as keyof typeof PLAN_LIMITS]?.LABEL || 'Free';
   const expiryDate = new Date(userPlan.expiresAt || Date.now()).toLocaleDateString();
   const regionSymbol = userPlan.region === 'IN' ? '₹' : '$';
+  
+  // Logic to hide add-ons for Pro/Business
+  const isUnlimitedPlan = userPlan.tier === 'PRO' || userPlan.tier === 'BUSINESS';
 
   return (
     <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-300">
@@ -188,37 +191,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                             )}
                         </div>
 
-                        {/* USAGE & ADD-ONS */}
-                        <div>
-                            <div className="flex justify-between items-center mb-4">
-                                <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                                    <Zap size={16} className="text-nexus-wire"/> AI Fuel & Add-ons
-                                </h4>
-                                <span className="text-[10px] font-bold text-nexus-accent bg-nexus-accent/10 px-2 py-1 rounded-full uppercase tracking-wider">
-                                    Balance: {userPlan.credits || 0} Credits
-                                </span>
+                        {/* USAGE & ADD-ONS (CONDITIONAL VISIBILITY) */}
+                        {isUnlimitedPlan ? (
+                            <div className="bg-nexus-accent/10 border border-nexus-accent/30 p-6 rounded-2xl flex items-center gap-4">
+                                <div className="w-12 h-12 bg-nexus-accent/20 rounded-full flex items-center justify-center text-nexus-accent">
+                                    <Zap size={24} fill="currentColor"/>
+                                </div>
+                                <div>
+                                    <h4 className="text-lg font-black text-white">Unlimited Power Active</h4>
+                                    <p className="text-xs text-gray-400 leading-relaxed">
+                                        Relax. You have unlimited access to the Architect and all premium nodes. No add-ons required.
+                                    </p>
+                                </div>
                             </div>
-                            
-                            <div className="grid grid-cols-3 gap-4">
-                                {ADDON_PACKS.map(pack => (
-                                    <div key={pack.id} className="bg-nexus-900/40 border border-nexus-800 p-4 rounded-2xl hover:border-nexus-accent/50 transition-all group">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div className="p-2 bg-nexus-950 rounded-lg text-nexus-accent"><ShoppingBag size={16}/></div>
-                                            <div className="text-xs font-bold text-white">{regionSymbol}{userPlan.region === 'IN' ? pack.price.IN : pack.price.GLOBAL}</div>
+                        ) : (
+                            <div>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                                        <Zap size={16} className="text-nexus-wire"/> AI Fuel & Add-ons
+                                    </h4>
+                                    <span className="text-[10px] font-bold text-nexus-accent bg-nexus-accent/10 px-2 py-1 rounded-full uppercase tracking-wider">
+                                        Balance: {userPlan.credits || 0} Credits
+                                    </span>
+                                </div>
+                                
+                                <div className="grid grid-cols-3 gap-4">
+                                    {ADDON_PACKS.map(pack => (
+                                        <div key={pack.id} className="bg-nexus-900/40 border border-nexus-800 p-4 rounded-2xl hover:border-nexus-accent/50 transition-all group">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div className="p-2 bg-nexus-950 rounded-lg text-nexus-accent"><ShoppingBag size={16}/></div>
+                                                <div className="text-xs font-bold text-white">{regionSymbol}{userPlan.region === 'IN' ? pack.price.IN : pack.price.GLOBAL}</div>
+                                            </div>
+                                            <div className="text-sm font-black text-white uppercase tracking-tight">{pack.name}</div>
+                                            <div className="text-[10px] text-gray-500 mb-4">+{pack.credits} AI Prompts</div>
+                                            <button 
+                                                onClick={() => handleBuyAddon(pack)}
+                                                disabled={!!isBuying}
+                                                className="w-full py-2 bg-white/5 hover:bg-nexus-accent hover:text-black text-white text-[10px] font-bold rounded-lg uppercase tracking-wider transition-all"
+                                            >
+                                                {isBuying === pack.id ? 'Processing...' : 'Buy Now'}
+                                            </button>
                                         </div>
-                                        <div className="text-sm font-black text-white uppercase tracking-tight">{pack.name}</div>
-                                        <div className="text-[10px] text-gray-500 mb-4">+{pack.credits} AI Prompts</div>
-                                        <button 
-                                            onClick={() => handleBuyAddon(pack)}
-                                            disabled={!!isBuying}
-                                            className="w-full py-2 bg-white/5 hover:bg-nexus-accent hover:text-black text-white text-[10px] font-bold rounded-lg uppercase tracking-wider transition-all"
-                                        >
-                                            {isBuying === pack.id ? 'Processing...' : 'Buy Now'}
-                                        </button>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         {/* Invoice History */}
                         <div className="opacity-50 pointer-events-none grayscale">

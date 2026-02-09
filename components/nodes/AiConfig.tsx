@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { NexusSubtype } from '../../types';
 import { Brain, Settings, Film, Sparkles, Loader2, Play, FileJson, ScanEye, FileText, Database, Shield, Zap, Activity, Clock, DollarSign, History, Wrench, FileInput, Table, ShieldCheck, Filter, AlertTriangle, CheckCircle2, Music, Type, Wand2, Layers, Monitor, Share2, Clapperboard, Image as ImageIcon, Mic, Move, Download, Palette, Camera, Scale, Coins, Network, Plus, Trash2 } from 'lucide-react';
 import { SectionHeader, SelectField, InputField, ToggleField, TextAreaField, SliderField, KeyValueList, CollapsibleSection, RuleList } from '../ConfigInputs';
+import { AI_MODELS } from '../../constants';
 
 interface AiConfigProps {
     subtype: NexusSubtype;
@@ -100,11 +101,11 @@ const AiConfig: React.FC<AiConfigProps> = ({ subtype, config, onChange }) => {
                 <CollapsibleSection icon={Brain} title="Model Config">
                     <SelectField 
                         label="AI Model" 
-                        value={config.model || 'gemini-3-flash-preview'} 
+                        value={config.model || AI_MODELS.RUNTIME} 
                         onChange={(v: string) => onChange('model', v)} 
                         options={[
-                            { label: 'Gemini 3 Flash (Fast)', value: 'gemini-3-flash-preview' }, 
-                            { label: 'Gemini 3 Pro (Accurate)', value: 'gemini-3-pro-preview' }
+                            { label: 'Gemini 3 Flash (Fast & Cheap)', value: 'gemini-3-flash-preview' }, 
+                            { label: 'Gemini 3 Pro (High Quality)', value: 'gemini-3-pro-preview' }
                         ]} 
                     />
                 </CollapsibleSection>
@@ -118,11 +119,11 @@ const AiConfig: React.FC<AiConfigProps> = ({ subtype, config, onChange }) => {
                 <CollapsibleSection icon={Brain} title="Core Configuration" defaultOpen={true}>
                     <SelectField 
                         label="AI Model" 
-                        value={config.model || 'gemini-3-flash-preview'} 
+                        value={config.model || AI_MODELS.RUNTIME} 
                         onChange={(v: string) => onChange('model', v)} 
                         options={[
-                            { label: 'Gemini 3 Flash (Fast)', value: 'gemini-3-flash-preview' }, 
-                            { label: 'Gemini 3 Pro (Smart)', value: 'gemini-3-pro-preview' }, 
+                            { label: 'Gemini 3 Flash (Best Value)', value: 'gemini-3-flash-preview' }, 
+                            { label: 'Gemini 3 Pro (Reasoning)', value: 'gemini-3-pro-preview' }, 
                             { label: 'GPT-4o (OpenAI)', value: 'gpt-4o' }
                         ]} 
                     />
@@ -184,6 +185,9 @@ const AiConfig: React.FC<AiConfigProps> = ({ subtype, config, onChange }) => {
                 <CollapsibleSection icon={Table} title="Schema Definition">
                     <TextAreaField label="JSON Schema" value={config.extractionSchema} onChange={(v: string) => onChange('extractionSchema', v)} rows={8} placeholder='{ "field": "type" }' />
                 </CollapsibleSection>
+                <div className="mt-2 text-[9px] text-gray-500 text-center">
+                    Uses <b>{AI_MODELS.RUNTIME}</b> for low-cost extraction.
+                </div>
             </div>
         );
     }
@@ -192,7 +196,7 @@ const AiConfig: React.FC<AiConfigProps> = ({ subtype, config, onChange }) => {
         return (
             <div className="space-y-2">
                 <CollapsibleSection icon={Film} title="Core Studio Config" defaultOpen={true}>
-                    <SelectField label="AI Model" value={config.model || 'veo-3.1-generate-preview'} onChange={(v: string) => onChange('model', v)} options={[{ label: 'Veo 3.1 Fast', value: 'veo-3.1-fast-generate-preview' }]} />
+                    <SelectField label="AI Model" value={config.model || AI_MODELS.VIDEO} onChange={(v: string) => onChange('model', v)} options={[{ label: 'Veo 3.1 Fast', value: 'veo-3.1-fast-generate-preview' }]} />
                     <TextAreaField label="Video Prompt" value={config.prompt} onChange={(v: string) => onChange('prompt', v)} rows={4} />
                 </CollapsibleSection>
             </div>

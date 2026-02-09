@@ -47,6 +47,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // --- 2. LOGIN ACTION (WRAPPED) ---
   const signInWithGoogle = async () => {
     setAuthError(null);
+    
+    // 🔥 Safety Check: Ensure Firebase initialized
+    if (!auth) {
+        setAuthError("System Error: Firebase is not configured. Please verify your environment variables.");
+        return;
+    }
+
     try {
         // Call the decoupled service
         const user = await triggerGoogleLogin();
@@ -67,6 +74,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             errorMsg = `Domain Blocked: Add "${window.location.hostname}" to Firebase Console > Authentication > Settings`;
         } else if (error.code === 'auth/network-request-failed') {
             errorMsg = "Network Error: Check internet connection.";
+        } else if (error.code === 'auth/operation-not-supported-in-this-environment') {
+            errorMsg = "Environment Security: This browser environment (e.g. Incognito or File System) blocks authentication. Please use a standard browser window.";
+        } else if (error.code === 'auth/api-key-not-valid') {
+            errorMsg = "Configuration Error: The Firebase API Key is invalid or expired. Please check your project settings.";
         }
 
         setAuthError(errorMsg);
