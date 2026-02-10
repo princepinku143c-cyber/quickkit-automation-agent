@@ -32,6 +32,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // ✅ Webhook Logic (POST request from Razorpay)
   if (req.method === 'POST') {
+    // 🔥 SECURITY: Ye line tumhare Vercel Env Var se secret uthayegi.
+    // Tumne jo Vercel me set kiya hai wahi use hoga.
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
     const signature = req.headers['x-razorpay-signature'] as string;
 
@@ -73,8 +75,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (userId) {
           console.log(`✅ Payment Captured for User: ${userId}`);
           
-          // Determine Plan from Amount (Simple Logic)
-          // In production, use 'notes.plan' or 'notes.tier' if sent from frontend
           const amountPaid = payment.amount / 100; // Razorpay sends amount in paise
           let newTier = 'PRO'; 
           let creditsToAdd = 100000;
@@ -84,7 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
              creditsToAdd = 1000000;
           }
 
-          // Update User in Firestore
+          // Update User Plan
           await db.collection('users').doc(userId).set({
             plan: {
               tier: newTier,
@@ -99,7 +99,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }, { merge: true });
 
-          // Log Transaction
+          // Log Transaction Success
           await db.collection('payments').doc(payment.id).set({
             id: payment.id,
             userId: userId,
@@ -109,21 +109,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             status: 'success',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
           });
-        } else {
-            console.warn("⚠️ Payment received but no User ID in notes.");
         }
       } 
-      // HANDLE: Subscription Cancelled (Optional)
+      // 🔥 HANDLE: Payment Failed (Added Logic)
+      else if (eventType === 'payment.failed') {
+        const payment = payload.payment.entity;
+        console.log(`❌ Payment Failed: ${payment.id}`);
+        
+        // Log Failure in DB
+        await db.collection('payments').doc(payment.id).set({
+            id: payment.id,
+            gateway: 'RAZORPAY',
+            amount: payment.amount / 100,
+            currency: payment.currency,
+            status: 'failed',
+            error_code: payment.error_code,
+            error_description: payment.error_description,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      }
+      // HANDLE: Subscription Cancelled
       else if (eventType === 'subscription.cancelled') {
-          // Logic to turn off auto-renew
+          // Logic to turn off auto-renew if you implement Subscriptions later
+          console.log("Subscription Cancelled Event Received");
       }
 
-      // Always return 200 OK to Razorpay
+      // Always return 200 OK to Razorpay so they don't retry
       return res.status(200).json({ status: 'ok' });
 
     } catch (err: any) {
       console.error("Webhook Logic Error:", err);
-      // Return 200 even on logic error so Razorpay doesn't retry infinitely
       return res.status(200).json({ status: 'error_logged' });
     }
   }
