@@ -6,8 +6,8 @@ import { Nexus, Synapse, ChatMessage, PlanTier } from '../types';
 import { ArchitectResponse, Decision } from '../services/architect/types';
 import { saveArchitectMemory } from '../services/cloudStore';
 import { PLAN_LIMITS } from '../constants';
-import { checkAndIncrementAI } from '../services/usageGuard'; // 🔥 NEW IMPORT
-import { useAuth } from '../context/AuthContext'; // To get uid
+import { checkAndConsumeCredit } from '../services/usageGuard'; // 🔥 UPDATED IMPORT
+import { useAuth } from '../context/AuthContext';
 
 interface AIAssistantProps {
   isOpen: boolean;
@@ -16,7 +16,7 @@ interface AIAssistantProps {
   currentNexuses: Nexus[];
   currentSynapses: Synapse[];
   projectContext?: string;
-  userPlan?: PlanTier; // Injected from App
+  userPlan?: PlanTier;
   onUpgrade?: () => void;
 }
 
@@ -53,14 +53,14 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     e?.preventDefault();
     if (!input.trim() || isLoading) return;
 
-    // --- 🔥 REAL SAAS USAGE GUARD ---
+    // --- 🔥 REAL USAGE GUARD (CREDIT CONSUMPTION) ---
     if (user) {
-        const allowed = await checkAndIncrementAI(user.uid);
-        if (!allowed) {
+        const hasCredit = await checkAndConsumeCredit(user.uid, 1); // Cost = 1 credit
+        if (!hasCredit) {
             setMessages(prev => [...prev, { 
                 id: Date.now().toString(), 
                 role: 'system', 
-                content: `🔒 **Free Plan Limit Reached.**\n\nYou’ve used all your free AI prompts for this month.\nUpgrade to Pro to continue designing workflows with AI.`, 
+                content: `🔒 **Credit Limit Reached.**\n\nYou’ve used all your AI credits.\nTop up your balance or upgrade to Pro to continue.`, 
                 timestamp: Date.now() 
             }]);
             return;
@@ -120,11 +120,11 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   };
 
   const handleAnalysis = async (intent: 'VALIDATE' | 'EXPLAIN' | 'OPTIMIZE') => {
-      // Analysis also consumes quota
+      // Analysis consumes quota
       if (user) {
-          const allowed = await checkAndIncrementAI(user.uid);
-          if (!allowed) {
-              setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', content: `🔒 Limit Reached. Upgrade to run analysis.`, timestamp: Date.now() }]);
+          const hasCredit = await checkAndConsumeCredit(user.uid, 1);
+          if (!hasCredit) {
+              setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', content: `🔒 Insufficient Credits.`, timestamp: Date.now() }]);
               return;
           }
       }
@@ -199,8 +199,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   if (!isOpen) return null;
 
-  const limit = PLAN_LIMITS[userPlan].AI_PROMPTS;
-
   return (
     <div className="fixed inset-y-0 right-0 w-[520px] bg-[#030303]/98 backdrop-blur-3xl border-l border-white/10 z-[100] flex flex-col shadow-[0_0_100px_rgba(0,0,0,0.8)] animate-in slide-in-from-right duration-500 font-sans">
         
@@ -229,7 +227,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                         {msg.role === 'user' ? 'Requirements' : 'Blueprint Design'}
                     </span>
                     
-                    {msg.content.includes("Free Plan Limit Reached") ? (
+                    {msg.content.includes("Credit Limit Reached") ? (
                         <div className="max-w-[90%] p-6 bg-gradient-to-br from-nexus-900 to-black rounded-2xl border border-nexus-accent/30 shadow-2xl relative overflow-hidden group">
                             <div className="absolute top-0 right-0 p-3 opacity-20"><Lock size={48} className="text-nexus-accent"/></div>
                             <div className="relative z-10">
@@ -237,10 +235,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                                     <AlertTriangle size={14} className="text-yellow-500"/> Usage Limit Reached
                                 </h3>
                                 <p className="text-xs text-gray-400 mb-4 leading-relaxed">
-                                    You've used all <b>5 free AI prompts</b>. The Architect requires more fuel to continue designing complex systems.
+                                    You've run out of AI Credits. The Architect requires fuel to continue designing complex systems.
                                 </p>
                                 <button onClick={onUpgrade} className="w-full py-3 bg-nexus-accent text-black font-black rounded-xl text-[10px] uppercase tracking-widest hover:scale-105 transition-all flex items-center justify-center gap-2 shadow-lg">
-                                    <Crown size={14} fill="currentColor"/> Unlock Pro Power
+                                    <Crown size={14} fill="currentColor"/> Top Up Credits
                                 </button>
                             </div>
                         </div>
@@ -286,14 +284,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
         {/* ACTIONS */}
         <div className="p-8 border-t border-white/10 bg-black/60 backdrop-blur-2xl">
-            {/* USAGE METER - VISUAL ONLY, LOGIC IS SERVER SIDE */}
-            <div className="mb-4 flex items-center justify-between text-[9px] font-black text-gray-500 uppercase tracking-widest">
-                <span className="flex items-center gap-2">
-                    <Activity size={10} className="text-nexus-success"/> AI Fuel
-                </span>
-                <span>{limit === 9999 ? 'Unlimited' : `Monthly Limit: ${limit}`}</span>
-            </div>
-
             {pendingChanges && (
                 <div className="mb-8 p-1 bg-gradient-to-br from-nexus-accent/40 via-blue-500/20 to-purple-500/40 rounded-2xl animate-in slide-in-from-bottom-4">
                     <div className="bg-[#0a0a0a] p-6 rounded-[14px] relative overflow-hidden">

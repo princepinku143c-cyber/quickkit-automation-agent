@@ -1,58 +1,69 @@
 
 import { db } from './firebase';
-import { UserPlan, PlanTier } from '../types';
+import { UserPlan } from '../types';
 import { PLAN_LIMITS } from '../constants';
 import firebase from 'firebase/compat/app';
 
 const USERS_COLLECTION = 'users';
 
 /**
- * Checks if the user is allowed to use AI features based on their plan.
- * If allowed, atomically increments the 'aiUsed' counter.
+ * Checks if the user has enough credits and atomically consumes them.
+ * Returns TRUE if action allowed, FALSE if blocked.
  */
-export const checkAndIncrementAI = async (uid: string): Promise<boolean> => {
-    if (!db) return true; // Fallback if offline
-    
+export const checkAndConsumeCredit = async (uid: string, cost: number = 1): Promise<boolean> => {
+    if (!db) return true; // Fallback if DB not ready
+    if (cost === 0) return true;
+
     const userRef = db.collection(USERS_COLLECTION).doc(uid);
 
     try {
         return await db.runTransaction(async (transaction) => {
             const doc = await transaction.get(userRef);
-            if (!doc.exists) return false;
+            
+            // Allow if user doesn't exist yet (will be created) or error reading
+            if (!doc.exists) return true;
 
             const userData = doc.data() as UserPlan;
-            const plan = PLAN_LIMITS[userData.tier] || PLAN_LIMITS.FREE;
-            const usage = userData.aiUsed || 0;
+            const currentCredits = userData.credits || 0;
 
-            if (usage >= plan.AI_PROMPTS) {
-                return false; // Limit Reached
+            // Business Plan Bypass (Unlimited)
+            if (userData.tier === 'BUSINESS') {
+                transaction.update(userRef, { 
+                    aiUsed: firebase.firestore.FieldValue.increment(cost) 
+                });
+                return true; 
             }
 
-            // Allowed: Increment usage
+            // Check Balance
+            if (currentCredits < cost) {
+                console.warn(`[Usage Guard] Blocked: Has ${currentCredits}, Needs ${cost}`);
+                return false; 
+            }
+
+            // Deduct Credits
             transaction.update(userRef, { 
-                aiUsed: firebase.firestore.FieldValue.increment(1) 
+                credits: firebase.firestore.FieldValue.increment(-cost),
+                aiUsed: firebase.firestore.FieldValue.increment(cost) 
             });
+            
             return true;
         });
     } catch (e) {
-        console.error("Usage Guard Error:", e);
-        return false; // Fail safe
+        console.error("Usage Guard Transaction Failed:", e);
+        // Fail safe: Block if error to protect resources, or Allow if critical UX? 
+        // Choosing Block for safety.
+        return false; 
     }
 };
 
-/**
- * Checks if user can create a new workflow.
- * DOES NOT increment anything, just a read check.
- */
 export const canCreateWorkflow = (userPlan: UserPlan, currentProjectCount: number): boolean => {
-    const limit = PLAN_LIMITS[userPlan.tier].PROJECTS;
+    if (userPlan.tier === 'BUSINESS') return true;
+    const limit = PLAN_LIMITS[userPlan.tier]?.PROJECTS || 1;
     return currentProjectCount < limit;
 };
 
-/**
- * Checks if user can add more nodes to a workflow.
- */
 export const canAddNode = (userPlan: UserPlan, currentNodeCount: number): boolean => {
-    const limit = PLAN_LIMITS[userPlan.tier].MAX_NODES;
+    if (userPlan.tier === 'BUSINESS') return true;
+    const limit = PLAN_LIMITS[userPlan.tier]?.MAX_NODES || 10;
     return currentNodeCount < limit;
 };
