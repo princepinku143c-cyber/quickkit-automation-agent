@@ -306,6 +306,12 @@ export interface Project {
 
 export type UserRole = 'OWNER' | 'ADMIN' | 'USER';
 
+export interface UserUsage {
+    workflows: number;
+    runs: number;
+    apiCalls: number;
+}
+
 export interface UserPlan {
     uid: string;
     email: string;
@@ -321,9 +327,16 @@ export interface UserPlan {
     provider?: 'RAZORPAY' | 'PAYPAL' | 'STRIPE';
     appliedCoupon?: string;
     finalPrice?: number;
+    
+    // Legacy counters
     credits: number;
-    aiUsed: number; // 🔥 ADDED: Tracks actual AI usage count against limit
+    aiUsed: number;
     monthlyLimit: number;
+    
+    // New Usage Object
+    usage?: UserUsage;
+    warningSent?: boolean; // 🔥 NEW: Track if 80% usage warning has been sent
+
     referralCode?: string;
     createdAt?: number; 
     onboardingDone?: boolean; 
@@ -339,6 +352,7 @@ export interface UserAccount {
     status: 'ACTIVE' | 'DISABLED';
     joinedAt: number;
     lastLoginAt: number;
+    usage?: UserUsage; // 🔥 NEW: Added usage for Analytics
 }
 
 export interface AdminPayment {

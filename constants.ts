@@ -35,28 +35,31 @@ export const AI_MODELS = {
 // --- PLAN LIMITS (CONVERSION ENGINE) ---
 export const PLAN_LIMITS = {
   FREE: {
-    PROJECTS: 2,
+    PROJECTS: 3,      // Workflows
+    RUNS: 100,        // Executions per month
+    API_CALLS: 5,     // 5 AI Prompts
     MAX_NODES: 10,
-    AI_PROMPTS: 5,
     CLOUD_SAVE: false,
     LABEL: 'Explorer',
     PRICE: '$0'
   },
   PRO: {
-    PROJECTS: 999, // Effectively Unlimited
+    PROJECTS: 20,
+    RUNS: 5000,
+    API_CALLS: 20000,
     MAX_NODES: 100,
-    AI_PROMPTS: 100000, // UX says "Unlimited", backend uses high soft cap for fair use
     CLOUD_SAVE: true,
     LABEL: 'Pro',
     PRICE: '$49'
   },
   BUSINESS: {
-    PROJECTS: 9999,
+    PROJECTS: 9999,   // Effectively Unlimited
+    RUNS: 999999,     // Effectively Unlimited
+    API_CALLS: 999999,// Effectively Unlimited
     MAX_NODES: 999,
-    AI_PROMPTS: 1000000, // Unlimited
     CLOUD_SAVE: true,
-    LABEL: 'Business',
-    PRICE: 'Custom' // Changed from $99 to Custom/Contact Sales
+    LABEL: 'UltraPro',
+    PRICE: '$99'
   }
 };
 

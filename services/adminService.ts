@@ -19,7 +19,8 @@ export const listUsers = async (): Promise<UserAccount[]> => {
                 tier: d.plan?.tier || d.tier || 'FREE',
                 status: d.status || 'ACTIVE',
                 joinedAt: d.createdAt?.toMillis() || Date.now(),
-                lastLoginAt: d.lastLoginAt || Date.now()
+                lastLoginAt: d.lastLoginAt || Date.now(),
+                usage: d.usage || { workflows: 0, runs: 0, apiCalls: 0 } // Fetch Usage
             };
         });
     } catch (e) {

@@ -1,19 +1,19 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Tag, Plus, Trash2, Power, RefreshCw, DollarSign, ListFilter, Users, Shield, CreditCard, Settings, Search, CheckCircle, AlertTriangle, Lock } from 'lucide-react';
+import { X, Tag, Plus, Trash2, Power, RefreshCw, DollarSign, ListFilter, Users, Shield, CreditCard, Settings, Search, CheckCircle, AlertTriangle, Lock, Activity, TrendingUp, BarChart3 } from 'lucide-react';
 import { listPromos, createPromo, togglePromo, deletePromo, listUsers, listPayments, updateUserRole, updateUserTier, toggleUserStatus } from '../services/adminService';
-import { AdminPromo, PlanTier, UserAccount, AdminPayment, UserRole } from '../types';
-import { useAuth } from '../context/AuthContext';
+import { AdminPromo, PlanTier, UserAccount, AdminPayment, UserRole, UserPlan } from '../types';
+import { requireAdmin, isAdmin } from '../services/adminGuard'; // 🔥 UPDATED IMPORT
 
 interface AdminDashboardProps {
   isOpen: boolean;
   onClose: () => void;
+  currentUser?: UserPlan | null; // Added prop
 }
 
 type TabType = 'USERS' | 'PAYMENTS' | 'PROMOS' | 'SETTINGS';
 
-const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose }) => {
-  const { user } = useAuth(); // In real app, check user.role here
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose, currentUser }) => {
   const [activeTab, setActiveTab] = useState<TabType>('USERS');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -22,6 +22,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose }) => {
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [payments, setPayments] = useState<AdminPayment[]>([]);
   
+  // STATS STATE (FOUNDER VIEW)
+  const [stats, setStats] = useState({ 
+      totalUsers: 0, 
+      totalRuns: 0, 
+      freeUsers: 0, 
+      proUsers: 0, 
+      businessUsers: 0,
+      mrr: 0 
+  });
+
   // FILTERS
   const [userSearch, setUserSearch] = useState('');
   
@@ -33,13 +43,46 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose }) => {
   const [newMax, setNewMax] = useState('');
   const [newPlans, setNewPlans] = useState<PlanTier[]>(['PRO']);
 
-  // MOCK CURRENT ADMIN ROLE (For Demo, assume OWNER if email matches or first user)
-  const isAdmin = true; // In real app: user?.role === 'ADMIN' || user?.role === 'OWNER'
-  const isOwner = true; // In real app: user?.role === 'OWNER'
+  // 🔥 REAL PERMISSION CHECK
+  const isOwner = currentUser?.role === 'OWNER';
 
   useEffect(() => {
-      if (isOpen) loadAllData();
-  }, [isOpen]);
+      if (isOpen) {
+          try {
+              // 🔥 HARD BLOCK: Throw error if not admin
+              requireAdmin(currentUser || null);
+              loadAllData();
+          } catch (e: any) {
+              alert(e.message);
+              onClose();
+          }
+      }
+  }, [isOpen, currentUser]);
+
+  // --- ANALYTICS ENGINE ---
+  useEffect(() => {
+      if (users.length > 0) {
+          const totalUsers = users.length;
+          const totalRuns = users.reduce((acc, u) => acc + (u.usage?.runs || 0), 0);
+          
+          const freeUsers = users.filter(u => u.tier === 'FREE').length;
+          const proUsers = users.filter(u => u.tier === 'PRO').length;
+          const businessUsers = users.filter(u => u.tier === 'BUSINESS').length;
+
+          // Estimated MRR Calculation (Based on standard pricing)
+          // Pro = $49, Business = $99
+          const estimatedMRR = (proUsers * 49) + (businessUsers * 99);
+
+          setStats({ 
+              totalUsers, 
+              totalRuns, 
+              freeUsers, 
+              proUsers, 
+              businessUsers,
+              mrr: estimatedMRR 
+          });
+      }
+  }, [users]);
 
   const loadAllData = async () => {
       setIsLoading(true);
@@ -100,7 +143,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
-      <div className="w-full max-w-6xl h-[90vh] bg-[#0a0a0a] border border-nexus-800 rounded-[32px] shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-full max-w-7xl h-[90vh] bg-[#0a0a0a] border border-nexus-800 rounded-[32px] shadow-2xl flex flex-col overflow-hidden">
         
         {/* Header */}
         <div className="p-6 border-b border-nexus-800 flex justify-between items-center bg-nexus-950">
@@ -143,7 +186,50 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose }) => {
                 
                 {/* --- USERS TAB --- */}
                 {activeTab === 'USERS' && (
-                    <div className="space-y-6">
+                    <div className="space-y-8">
+                        {/* FOUNDER DASHBOARD HUD */}
+                        <div className="grid grid-cols-4 gap-4">
+                            {/* Card 1: Total Users */}
+                            <div className="p-5 bg-nexus-900 border border-nexus-800 rounded-2xl flex flex-col justify-between h-32 relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Users size={60}/></div>
+                                <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Total Users</div>
+                                <div>
+                                    <div className="text-3xl font-black text-white">{stats.totalUsers}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">Total Registrations</div>
+                                </div>
+                            </div>
+
+                            {/* Card 2: MRR (Revenue) */}
+                            <div className="p-5 bg-nexus-900 border border-nexus-800 rounded-2xl flex flex-col justify-between h-32 relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-green-500"><DollarSign size={60}/></div>
+                                <div className="text-[10px] font-black text-green-500 uppercase tracking-widest flex items-center gap-2"><TrendingUp size={12}/> Est. Monthly Revenue</div>
+                                <div>
+                                    <div className="text-3xl font-black text-white">${stats.mrr}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">Based on active plans</div>
+                                </div>
+                            </div>
+
+                            {/* Card 3: Plan Breakdown */}
+                            <div className="p-5 bg-nexus-900 border border-nexus-800 rounded-2xl flex flex-col justify-between h-32">
+                                <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Plan Distribution</div>
+                                <div className="space-y-1">
+                                    <div className="flex justify-between text-[10px] font-bold"><span className="text-gray-500">Free</span> <span className="text-white">{stats.freeUsers}</span></div>
+                                    <div className="flex justify-between text-[10px] font-bold"><span className="text-nexus-accent">Pro</span> <span className="text-white">{stats.proUsers}</span></div>
+                                    <div className="flex justify-between text-[10px] font-bold"><span className="text-purple-400">Business</span> <span className="text-white">{stats.businessUsers}</span></div>
+                                </div>
+                            </div>
+
+                            {/* Card 4: Total Consumption */}
+                            <div className="p-5 bg-nexus-900 border border-nexus-800 rounded-2xl flex flex-col justify-between h-32 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 p-4 opacity-10"><Activity size={60}/></div>
+                                <div className="text-[10px] font-black text-yellow-500 uppercase tracking-widest">System Load</div>
+                                <div>
+                                    <div className="text-3xl font-black text-white">{stats.totalRuns.toLocaleString()}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">Total Workflow Runs</div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="flex justify-between items-center">
                             <h3 className="text-xl font-bold text-white">User Management</h3>
                             <div className="relative">
@@ -164,6 +250,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose }) => {
                                         <th className="p-4">User</th>
                                         <th className="p-4">Role</th>
                                         <th className="p-4">Plan</th>
+                                        <th className="p-4">Runs</th>
                                         <th className="p-4">Status</th>
                                         <th className="p-4">Joined</th>
                                         <th className="p-4 text-right">Actions</th>
@@ -181,7 +268,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose }) => {
                                                     value={u.role} 
                                                     onChange={(e) => handleRoleChange(u.uid, e.target.value as UserRole)}
                                                     className={`bg-black border border-nexus-800 rounded px-2 py-1 text-[10px] font-bold outline-none cursor-pointer ${u.role === 'OWNER' ? 'text-nexus-accent' : u.role === 'ADMIN' ? 'text-blue-400' : 'text-gray-400'}`}
-                                                    disabled={!isOwner || (u.role === 'OWNER' && u.uid === user?.uid)}
+                                                    disabled={!isOwner || (u.role === 'OWNER' && u.uid === currentUser?.uid)}
                                                 >
                                                     <option value="USER">USER</option>
                                                     <option value="ADMIN">ADMIN</option>
@@ -192,12 +279,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose }) => {
                                                 <select 
                                                     value={u.tier} 
                                                     onChange={(e) => handleTierChange(u.uid, e.target.value as PlanTier)}
-                                                    className="bg-black border border-nexus-800 rounded px-2 py-1 text-[10px] font-bold outline-none cursor-pointer text-white"
+                                                    className={`bg-black border border-nexus-800 rounded px-2 py-1 text-[10px] font-bold outline-none cursor-pointer ${u.tier === 'BUSINESS' ? 'text-purple-400' : u.tier === 'PRO' ? 'text-nexus-accent' : 'text-gray-400'}`}
                                                 >
                                                     <option value="FREE">FREE</option>
                                                     <option value="PRO">PRO</option>
                                                     <option value="BUSINESS">BUSINESS</option>
                                                 </select>
+                                            </td>
+                                            <td className="p-4 font-mono text-gray-400">
+                                                {u.usage?.runs || 0}
                                             </td>
                                             <td className="p-4">
                                                 <span className={`px-2 py-1 rounded text-[9px] font-bold uppercase ${u.status === 'ACTIVE' ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>

@@ -31,17 +31,23 @@ export const ensureUserProfile = async (user: firebase.User): Promise<UserPlan> 
                 uid: user.uid,
                 email: user.email || '',
                 tier: 'FREE',
-                region: 'GLOBAL', // Can be updated later via IP check
-                role: 'USER',
+                region: 'GLOBAL', 
+                role: 'USER', // Default Role
                 status: 'active',
-                credits: 5, // Default Free Credits
-                aiUsed: 0, // 🔥 Tracks cumulative usage
+                credits: 5,
+                aiUsed: 0, 
                 monthlyLimit: 5,
+                usage: {
+                    workflows: 0,
+                    runs: 0,
+                    apiCalls: 0
+                },
+                warningSent: false, // 🔥 NEW: Initialize warning flag
                 createdAt: Date.now(),
-                onboardingDone: false, // Critical for UX flow
+                onboardingDone: false,
                 autoRenew: false,
                 updatedAt: Date.now(),
-                expiresAt: 0 // Never expires for free plan
+                expiresAt: 0 
             };
 
             await userRef.set(newProfile);
@@ -83,4 +89,25 @@ export const updateUserProfile = async (uid: string, updates: Partial<UserPlan>)
     } catch (error) {
         console.error("Error updating profile:", error);
     }
+};
+
+/**
+ * ⚡ ADMIN TOOL: Promotes a user to ADMIN by email.
+ * Run this from the browser console during development:
+ * window.nexusPromote('your@email.com')
+ */
+export const debugPromoteUser = async (email: string) => {
+    if (!db) return;
+    console.log(`Searching for ${email}...`);
+    const snapshot = await db.collection(USERS_COLLECTION).where('email', '==', email).limit(1).get();
+    
+    if (snapshot.empty) {
+        console.error("User not found!");
+        return;
+    }
+
+    const userDoc = snapshot.docs[0];
+    await userDoc.ref.update({ role: 'ADMIN' });
+    console.log(`✅ SUCCESS: ${email} is now an ADMIN.`);
+    window.location.reload();
 };

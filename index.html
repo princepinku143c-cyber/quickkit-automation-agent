@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -8,7 +7,32 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <meta name="theme-color" content="#050505" />
-    <meta name="description" content="Next-generation AI automation workflow builder" />
+    
+    <!-- 🚨 CSP REMOVED FOR DEBUGGING -->
+    <!-- Monitoring: Lightweight Error Trap -->
+    <script>
+      window.onerror = function (msg, url, line, col, error) {
+        // In production, send this to Sentry/LogRocket
+        console.error("[Monitor] Captured error:", { msg, url, line, error });
+        // Prevent default handler if needed
+        return false;
+      };
+    </script>
+
+    <!-- 1️⃣ SEO Meta Tags -->
+    <title>NexusStream – Build AI Automation Workflows Without Code</title>
+    <meta name="description" content="NexusStream helps you build, test, and deploy AI-powered automation workflows with a no-code visual builder. Faster, smarter, scalable." />
+    <meta name="keywords" content="AI automation, no code workflow, AI workflow builder, automation SaaS, AI tools, drag and drop automation" />
+    <meta name="author" content="NexusStream" />
+
+    <!-- 2️⃣ Open Graph (Social Share SEO) -->
+    <meta property="og:title" content="NexusStream – AI Automation Made Simple" />
+    <meta property="og:description" content="Design, simulate and deploy AI automation workflows without writing code." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://www.nexusstream.site/" />
+    <meta property="og:image" content="https://www.nexusstream.site/og-image.png" />
+    <meta property="og:site_name" content="NexusStream" />
+    <meta name="twitter:card" content="summary_large_image" />
 
     <!-- PWA / Mobile -->
     <meta name="mobile-web-app-capable" content="yes" />
@@ -19,7 +43,6 @@
       rel="apple-touch-icon"
       href="https://cdn-icons-png.flaticon.com/512/9626/9626629.png"
     />
-    <title>NexusStream - AI Automation OS</title>
 
     <!-- Payments: Razorpay (Global Object) -->
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
@@ -29,6 +52,10 @@
 
     <!-- Tailwind + Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 5️⃣ Font Optimization (Preconnect) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
       rel="stylesheet"
@@ -90,7 +117,7 @@
       body {
         background-color: #050505;
         color: #e2e8f0;
-        /* FIXED: Changed from hidden to auto to allow Landing Page scrolling */
+        /* Allow scroll for SEO pages, app will lock it when mounted */
         overflow-y: auto; 
         overflow-x: hidden;
         -webkit-tap-highlight-color: transparent;
@@ -159,7 +186,8 @@
     "axios": "https://esm.sh/axios@^1.13.3",
     "firebase-functions/": "https://esm.sh/firebase-functions@^7.0.3/",
     "crypto": "https://esm.sh/crypto@^1.0.1",
-    "razorpay": "https://esm.sh/razorpay@^2.9.6"
+    "razorpay": "https://esm.sh/razorpay@^2.9.6",
+    "nodemailer": "https://esm.sh/nodemailer@^8.0.1"
   }
 }
 </script>
@@ -167,7 +195,6 @@
 
   <body>
     <div id="root"></div>
-    <!-- Pointing directly to index.tsx at root -->
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>

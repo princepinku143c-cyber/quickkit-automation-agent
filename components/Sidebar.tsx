@@ -1,14 +1,16 @@
 
 import React, { useState } from 'react';
 import { BLUEPRINTS } from '../data/blueprints'; 
-import { NexusSubtype, NexusType, Blueprint, Nexus, Synapse } from '../types';
-import { Layers, ArrowRight, Zap, Building2, Globe, Brain, Split, GitMerge, HardDrive, Database, Terminal, MessageCircle, LayoutGrid, User, Key, LogIn, LogOut, Loader2, Crown, ShieldCheck, Search, Box, Cpu, Sparkles, Gift, ListFilter, Settings } from 'lucide-react';
+import { NexusSubtype, NexusType, Blueprint, Nexus, Synapse, UserPlan } from '../types';
+import { Layers, ArrowRight, Zap, Building2, Globe, Brain, Split, GitMerge, HardDrive, Database, Terminal, MessageCircle, LayoutGrid, User, Key, LogIn, LogOut, Loader2, Crown, ShieldCheck, Search, Box, Cpu, Sparkles, Gift, ListFilter, Settings, Activity } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { isAdmin } from '../services/adminGuard'; 
 import PricingModal from './PricingModal';
 import MarketplaceModal from './MarketplaceModal'; 
 import ReferralModal from './ReferralModal'; 
 import AdminDashboard from './AdminDashboard'; 
 import NodeLibrary from './sidebar/NodeLibrary'; 
+import { PLAN_LIMITS } from '../constants';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -23,9 +25,10 @@ interface SidebarProps {
   onOpenAI?: () => void; 
   currentView: 'dashboard' | 'editor'; 
   currentStream?: { nexuses: Nexus[], synapses: Synapse[] };
+  userPlan?: UserPlan | null; 
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBlueprint, onClear, onOpenSettings, onNavigateProjects, onOpenCredentials, onOpenRegistry, onOpenAI, currentView, currentStream }) => {
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBlueprint, onClear, onOpenSettings, onNavigateProjects, onOpenCredentials, onOpenRegistry, onOpenAI, currentView, currentStream, userPlan }) => {
   const [activeTab, setActiveTab] = useState<'blocks' | 'blueprints'>('blocks');
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
@@ -61,15 +64,25 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBl
       }
   };
 
-  // Mock Admin Check (In real app, check user metadata/claims)
-  const canAccessAdmin = isDevMode || user?.email?.includes('owner') || user?.email?.includes('admin');
+  // 🔥 REAL ROLE CHECK
+  const canAccessAdmin = isDevMode || isAdmin(userPlan || null);
+
+  // 🔥 CALCULATE USAGE STATS FOR WIDGET
+  const currentTier = userPlan?.tier || 'FREE';
+  const limits = PLAN_LIMITS[currentTier];
+  const runsUsed = userPlan?.usage?.runs || 0;
+  const runsTotal = limits.RUNS;
+  const usagePercent = Math.min((runsUsed / runsTotal) * 100, 100);
+  const expiryDate = userPlan?.expiresAt ? new Date(userPlan.expiresAt).toLocaleDateString() : 'Never';
 
   return (
     <>
       <PricingModal isOpen={isPricingOpen} onClose={() => setIsPricingOpen(false)} />
       <MarketplaceModal isOpen={isMarketplaceOpen} onClose={() => setIsMarketplaceOpen(false)} />
       <ReferralModal isOpen={isReferralOpen} onClose={() => setIsReferralOpen(false)} />
-      <AdminDashboard isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} />
+      
+      {/* Pass userPlan to Dashboard for internal checks */}
+      <AdminDashboard isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} currentUser={userPlan} />
 
       {isOpen && (
         <div className="fixed inset-0 bg-black/80 z-30 md:hidden" onClick={onClose} />
@@ -195,29 +208,58 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBl
              </div>
         )}
 
-        {/* User Profile */}
-        <div className="p-4 border-t border-nexus-800 bg-nexus-950">
+        {/* User Profile & STATUS WIDGET */}
+        <div className="p-4 border-t border-nexus-800 bg-nexus-950 space-y-4">
              {user ? (
-                 <div className="flex flex-col gap-2">
-                     <div className="flex items-center gap-3">
-                         <div className="w-8 h-8 rounded-full bg-nexus-800 flex items-center justify-center"><User size={14}/></div>
-                         <div className="flex-1 overflow-hidden">
-                             <div className="text-xs font-bold text-white truncate">{user.displayName || 'Architect'}</div>
-                             <div className="text-[9px] text-gray-500 truncate">{user.email}</div>
+                 <>
+                     {/* 🔥 USAGE STATUS WIDGET */}
+                     <div className="bg-nexus-900 border border-nexus-800 rounded-xl p-3 space-y-2">
+                         <div className="flex justify-between items-center text-[10px] font-bold uppercase text-gray-500">
+                             <div className="flex items-center gap-1"><Activity size={10}/> {currentTier} Plan</div>
+                             <div className={usagePercent > 80 ? "text-red-500" : "text-green-400"}>
+                                 {runsUsed} / {runsTotal} Runs
+                             </div>
                          </div>
-                         <button onClick={onOpenSettings} className="p-1.5 hover:bg-nexus-800 rounded text-gray-500 hover:text-white transition-colors" title="Settings"><Settings size={14}/></button>
-                     </div>
-                     <div className="grid grid-cols-2 gap-2 mt-2">
-                         <button onClick={() => setIsReferralOpen(true)} className="flex items-center justify-center gap-1.5 p-2 bg-gradient-to-r from-purple-900 to-nexus-900 border border-purple-800 rounded text-[9px] font-bold text-purple-300 hover:text-white transition-all">
-                             <Gift size={10}/> Refer
-                         </button>
-                         {canAccessAdmin && (
-                             <button onClick={() => setIsAdminOpen(true)} className="flex items-center justify-center gap-1.5 p-2 bg-nexus-900 border border-nexus-800 rounded text-[9px] font-bold text-gray-400 hover:text-white transition-all">
-                                 <ListFilter size={10}/> Admin
+                         <div className="w-full h-1.5 bg-nexus-950 rounded-full overflow-hidden">
+                             <div 
+                                className={`h-full rounded-full transition-all duration-500 ${usagePercent > 80 ? 'bg-red-500' : 'bg-nexus-accent'}`} 
+                                style={{ width: `${usagePercent}%` }}
+                             />
+                         </div>
+                         {currentTier !== 'FREE' && (
+                             <div className="text-[9px] text-gray-600 font-mono text-right">
+                                 Exp: {expiryDate}
+                             </div>
+                         )}
+                         {currentTier === 'FREE' && usagePercent > 80 && (
+                             <button onClick={() => setIsPricingOpen(true)} className="w-full text-[9px] font-bold text-black bg-nexus-accent rounded py-1 uppercase hover:bg-white transition-colors">
+                                 Upgrade Now
                              </button>
                          )}
                      </div>
-                 </div>
+
+                     <div className="flex flex-col gap-2">
+                         <div className="flex items-center gap-3">
+                             <div className="w-8 h-8 rounded-full bg-nexus-800 flex items-center justify-center"><User size={14}/></div>
+                             <div className="flex-1 overflow-hidden">
+                                 <div className="text-xs font-bold text-white truncate">{user.displayName || 'Architect'}</div>
+                                 <div className="text-[9px] text-gray-500 truncate">{user.email}</div>
+                             </div>
+                             <button onClick={onOpenSettings} className="p-1.5 hover:bg-nexus-800 rounded text-gray-500 hover:text-white transition-colors" title="Settings"><Settings size={14}/></button>
+                         </div>
+                         <div className="grid grid-cols-2 gap-2 mt-2">
+                             <button onClick={() => setIsReferralOpen(true)} className="flex items-center justify-center gap-1.5 p-2 bg-gradient-to-r from-purple-900 to-nexus-900 border border-purple-800 rounded text-[9px] font-bold text-purple-300 hover:text-white transition-all">
+                                 <Gift size={10}/> Refer
+                             </button>
+                             {/* 🔥 CONDITIONAL RENDER: ADMIN BUTTON */}
+                             {canAccessAdmin && (
+                                 <button onClick={() => setIsAdminOpen(true)} className="flex items-center justify-center gap-1.5 p-2 bg-nexus-900 border border-nexus-800 rounded text-[9px] font-bold text-gray-400 hover:text-white transition-all">
+                                     <ListFilter size={10}/> Admin
+                                 </button>
+                             )}
+                         </div>
+                     </div>
+                 </>
              ) : (
                  <button 
                     onClick={handleLogin} 

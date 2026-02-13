@@ -12,11 +12,12 @@ interface PricingModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpgrade?: (plan: UserPlan) => void;
+  triggerReason?: string; // 🔥 NEW: Limit Reached Context
 }
 
 type ModalState = 'SELECTION' | 'SUMMARY' | 'PROCESSING' | 'SUCCESS' | 'ERROR';
 
-const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade }) => {
+const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade, triggerReason }) => {
   const { user } = useAuth();
   const [uiState, setUiState] = useState<ModalState>('SELECTION');
   const [errorMessage, setErrorMessage] = useState('');
@@ -104,10 +105,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
   };
 
   const getFinalAmount = () => {
-      // Logic only for PRO since BUSINESS is custom/contact
-      if (selectedPaidTier === 'BUSINESS') return 0;
-
-      const priceObj = prices[region]['PRO'];
+      const priceObj = prices[region][selectedPaidTier]; // Dynamic tier lookup
       const baseAmount = billingCycle === 'monthly' ? priceObj.monthly : priceObj.yearly;
       
       if (appliedCoupon) {
@@ -123,8 +121,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
   };
 
   const getBaseAmount = () => {
-      if (selectedPaidTier === 'BUSINESS') return 0;
-      const priceObj = prices[region]['PRO'];
+      const priceObj = prices[region][selectedPaidTier]; // Dynamic tier lookup
       return billingCycle === 'monthly' ? priceObj.monthly : priceObj.yearly;
   };
 
@@ -153,8 +150,6 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
 
   // --- PAYMENT FLOW HANDLER ---
   const handlePaymentStart = async () => {
-      if (selectedPaidTier === 'BUSINESS') return; // Should not happen via this flow
-
       if (!agreedToTerms) { alert("Please agree to the Terms of Service."); return; }
       
       setUiState('PROCESSING');
@@ -226,8 +221,8 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
 
   // --- DYNAMIC PAYPAL LOADER & RENDERER ---
   useEffect(() => {
-    // Only load/render if Global (Not India), Summary Screen, Not Business Plan
-    if (isOpen && region === 'GLOBAL' && uiState === 'SUMMARY' && selectedPaidTier !== 'BUSINESS' && paypalContainerRef.current) {
+    // Only load/render if Global (Not India), Summary Screen
+    if (isOpen && region === 'GLOBAL' && uiState === 'SUMMARY' && paypalContainerRef.current) {
         
         // 1. DYNAMICALLY LOAD SCRIPT
         const loadPayPal = async () => {
@@ -312,8 +307,9 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
   if (!isOpen) return null;
 
   const currentPrices = prices[region];
-  const finalPrice = getFinalAmount();
-  const basePrice = getBaseAmount();
+  
+  const finalPrice = uiState === 'SUMMARY' ? getFinalAmount() : 0;
+  const basePrice = uiState === 'SUMMARY' ? getBaseAmount() : 0;
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/95 backdrop-blur-3xl animate-in fade-in duration-300">
@@ -385,6 +381,17 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
         <div className="p-6 overflow-y-auto bg-[#050505] flex-1">
           {uiState === 'SELECTION' && (
             <div className="space-y-8">
+                {/* 🔥 LIMIT REACHED UI */}
+                {triggerReason && (
+                    <div className="p-4 bg-red-900/10 border border-red-500/20 rounded-2xl flex items-start gap-3 animate-in slide-in-from-top-4">
+                        <div className="p-2 bg-red-500/10 rounded-lg text-red-500 mt-0.5"><AlertTriangle size={18} /></div>
+                        <div>
+                            <h3 className="text-sm font-bold text-red-400 mb-1 uppercase tracking-wide">Action Blocked</h3>
+                            <p className="text-xs text-gray-400">{triggerReason}</p>
+                        </div>
+                    </div>
+                )}
+
                 <div className="text-center mb-8">
                     <h1 className="text-3xl md:text-4xl font-black text-white mb-3">Design Automations Smarter</h1>
                     <p className="text-gray-400 text-sm md:text-base max-w-2xl mx-auto">Build, validate, and improve workflows visually — before you automate anything.</p>
@@ -418,13 +425,12 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
                             <p className="text-[10px] text-gray-500 mt-2">Best for trying the platform logic.</p>
                         </div>
                         <ul className="space-y-3 mb-8 text-[11px] text-gray-400 flex-1">
-                            <li className="flex gap-2"><Check size={14} className="text-nexus-accent"/> 1 Workflow Project</li>
-                            <li className="flex gap-2"><Check size={14} className="text-nexus-accent"/> 5 AI Prompts (Lifetime)</li>
+                            <li className="flex gap-2"><Check size={14} className="text-nexus-accent"/> 3 Workflow Projects</li>
+                            <li className="flex gap-2"><Check size={14} className="text-nexus-accent"/> 500 AI Runs</li>
                             <li className="flex gap-2"><Check size={14} className="text-nexus-accent"/> Visual Canvas</li>
                             <li className="flex gap-2 text-gray-600"><X size={14}/> Cloud Save</li>
                         </ul>
                         <div className="mt-auto">
-                            <div className="text-[9px] text-gray-500 text-center mb-2">Need more prompts? Buy AI Fuel via Settings.</div>
                             <button disabled className="w-full py-4 bg-nexus-800 text-gray-500 rounded-2xl text-[10px] font-black uppercase cursor-not-allowed">Active Plan</button>
                         </div>
                     </div>
@@ -444,23 +450,23 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
                             <li className="flex gap-2"><Check size={14} className="text-nexus-accent"/> Cloud Save & History</li>
                             <li className="flex gap-2"><Check size={14} className="text-nexus-accent"/> Design-Only Channels</li>
                         </ul>
-                        <button onClick={() => setUiState('SUMMARY')} className="w-full py-4 bg-nexus-accent text-black rounded-2xl text-[10px] font-black uppercase hover:scale-105 transition-all shadow-lg">Upgrade to Pro</button>
+                        <button onClick={() => { setSelectedPaidTier('PRO'); setUiState('SUMMARY'); }} className="w-full py-4 bg-nexus-accent text-black rounded-2xl text-[10px] font-black uppercase hover:scale-105 transition-all shadow-lg">Upgrade to Pro</button>
                     </div>
 
-                    {/* BUSINESS PLAN - NO PRICE DISPLAY */}
-                    <div className="p-8 rounded-[32px] border border-nexus-800 bg-nexus-900/50 flex flex-col">
+                    {/* BUSINESS PLAN (ULTRA PRO) */}
+                    <div className={`p-8 rounded-[32px] border-2 transition-all cursor-pointer relative overflow-hidden flex flex-col ${selectedPaidTier === 'BUSINESS' ? 'border-nexus-wire bg-nexus-wire/5' : 'border-nexus-800 bg-nexus-900/50'}`} onClick={() => setSelectedPaidTier('BUSINESS')}>
                         <div className="mb-4">
-                            <div className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">{PLAN_LIMITS.BUSINESS.LABEL}</div>
-                            <div className="text-4xl font-black text-white">Custom</div>
+                            <div className="text-xs font-black text-nexus-wire uppercase tracking-widest mb-1">{PLAN_LIMITS.BUSINESS.LABEL}</div>
+                            <div className="text-4xl font-black text-white">{currentPrices.symbol}{billingCycle === 'monthly' ? currentPrices.BUSINESS.monthly : currentPrices.BUSINESS.yearly} <span className="text-sm font-medium text-gray-500">/ {billingCycle === 'monthly' ? 'mo' : 'yr'}</span></div>
                             <p className="text-[10px] text-gray-400 mt-2">For teams collaborating on automation design.</p>
                         </div>
                         <ul className="space-y-3 mb-8 text-[11px] text-gray-300 flex-1">
-                            <li className="flex gap-2"><Check size={14} className="text-white"/> Everything in Pro</li>
-                            <li className="flex gap-2"><Check size={14} className="text-white"/> Team Collaboration</li>
-                            <li className="flex gap-2"><Check size={14} className="text-white"/> Audit Logs</li>
-                            <li className="flex gap-2"><Check size={14} className="text-white"/> SLA Support</li>
+                            <li className="flex gap-2"><Check size={14} className="text-nexus-wire"/> Everything in Pro</li>
+                            <li className="flex gap-2"><Check size={14} className="text-nexus-wire"/> Team Collaboration</li>
+                            <li className="flex gap-2"><Check size={14} className="text-nexus-wire"/> Audit Logs</li>
+                            <li className="flex gap-2"><Check size={14} className="text-nexus-wire"/> SLA Support</li>
                         </ul>
-                        <button onClick={handleContactSales} className="w-full py-4 bg-white text-black rounded-2xl text-[10px] font-black uppercase hover:bg-gray-200 transition-all shadow-lg">Contact Sales</button>
+                        <button onClick={() => { setSelectedPaidTier('BUSINESS'); setUiState('SUMMARY'); }} className="w-full py-4 bg-nexus-wire text-black rounded-2xl text-[10px] font-black uppercase hover:scale-105 transition-all shadow-lg">Get UltraPro</button>
                     </div>
                 </div>
 
@@ -476,7 +482,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade 
             </div>
           )}
 
-          {uiState === 'SUMMARY' && selectedPaidTier === 'PRO' && (
+          {uiState === 'SUMMARY' && (
              <div className="max-w-2xl mx-auto space-y-6 animate-in slide-in-from-right">
                 <div className="bg-nexus-900/50 border border-nexus-800 p-8 rounded-[32px]">
                     <div className="flex justify-between items-center mb-8">

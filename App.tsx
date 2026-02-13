@@ -1,29 +1,31 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Sidebar from './components/Sidebar';
-import Canvas from './components/Canvas';
-import PropertiesPanel from './components/PropertiesPanel';
-import AIAssistant from './components/AIAssistant';
-import RunModal from './components/RunModal';
-import NodeRegistry from './components/NodeRegistry';
-import RoadmapModal from './components/RoadmapModal';
-import ProjectList from './components/ProjectList';
 import NexusMascot from './components/NexusMascot';
-import CredentialManager from './components/CredentialManager';
-import PricingModal from './components/PricingModal';
-import OnboardingModal from './components/OnboardingModal'; 
 import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage'; 
-import VideoModal from './components/VideoModal';
 import { SettingsModal } from './components/SettingsModal';
 import { Nexus, Synapse, Project, ExecutionState, NexusType, NexusSubtype, PlanTier, UserPlan } from './types';
-import { Play, Cloud, ShieldCheck, Info, Activity, AlertCircle, CheckCircle2, Save, AlertTriangle, Lock } from 'lucide-react';
+import { Play, Cloud, ShieldCheck, Info, Activity, AlertCircle, CheckCircle2, Save, AlertTriangle, Lock, Loader2 } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { subscribeToProjects, updateProject, createProject, deleteProject } from './services/projectService';
 import { listPromos } from './services/adminService'; 
-import { getUserProfile, updateUserProfile } from './services/userService'; 
-import { canAddNode } from './services/usageGuard'; // 🔥 NEW
+import { getUserProfile, updateUserProfile, debugPromoteUser } from './services/userService'; 
+import { canAddNode } from './services/usageGuard'; 
 import { DEFAULT_NODE_SETTINGS, PLAN_LIMITS } from './constants';
+
+// --- LAZY LOADED COMPONENTS (Performance Optimization) ---
+const Canvas = React.lazy(() => import('./components/Canvas'));
+const PropertiesPanel = React.lazy(() => import('./components/PropertiesPanel'));
+const AIAssistant = React.lazy(() => import('./components/AIAssistant'));
+const RunModal = React.lazy(() => import('./components/RunModal'));
+const NodeRegistry = React.lazy(() => import('./components/NodeRegistry'));
+const RoadmapModal = React.lazy(() => import('./components/RoadmapModal'));
+const ProjectList = React.lazy(() => import('./components/ProjectList'));
+const CredentialManager = React.lazy(() => import('./components/CredentialManager'));
+const PricingModal = React.lazy(() => import('./components/PricingModal'));
+const OnboardingModal = React.lazy(() => import('./components/OnboardingModal')); 
+const VideoModal = React.lazy(() => import('./components/VideoModal'));
 
 // --- DATA SANITIZATION UTILITIES ---
 const sanitizeNodes = (nodes: any[]): Nexus[] => {
@@ -35,7 +37,7 @@ const sanitizeNodes = (nodes: any[]): Nexus[] => {
     return nodes.map((n, i) => {
         let id = n.id;
         if (!id || seenIds.has(id)) {
-            id = `gen_node_${timestamp}_${i}_${Math.random().toString(36).substr(2, 5)}`;
+            id = `gen_node_${timestamp}_${i}_${Math.random()}`;
         }
         seenIds.add(id);
 
@@ -74,6 +76,12 @@ const sanitizeSynapses = (synapses: any[], validNodeIds: Set<string>): Synapse[]
     }));
 };
 
+const LoadingSpinner = () => (
+    <div className="flex h-full w-full items-center justify-center bg-[#050505]">
+        <Loader2 className="animate-spin text-nexus-accent" size={32} />
+    </div>
+);
+
 const AppContent: React.FC = () => {
   const { user } = useAuth();
   
@@ -100,6 +108,7 @@ const AppContent: React.FC = () => {
   const [isCredentialManagerOpen, setIsCredentialManagerOpen] = useState(false);
   const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
+  const [pricingReason, setPricingReason] = useState<string | undefined>(undefined); // 🔥 NEW: Track reason
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false); 
   
@@ -131,6 +140,12 @@ const AppContent: React.FC = () => {
           if (appRoute === 'app') setAppRoute('landing');
       }
   }, [user]);
+
+  // --- 2. ADMIN DEBUG TOOL ---
+  useEffect(() => {
+      // Expose helper to console for dev environment
+      (window as any).nexusPromote = debugPromoteUser;
+  }, []);
 
   const handleNavigate = (route: 'signup' | 'login') => {
       setAuthMode(route);
@@ -171,7 +186,9 @@ const AppContent: React.FC = () => {
       return (
         <>
             <LandingPage onNavigate={handleNavigate} onDemo={() => setIsDemoOpen(true)} />
-            <VideoModal isOpen={isDemoOpen} onClose={() => setIsDemoOpen(false)} />
+            <Suspense fallback={null}>
+                <VideoModal isOpen={isDemoOpen} onClose={() => setIsDemoOpen(false)} />
+            </Suspense>
         </>
       );
   }
@@ -189,6 +206,7 @@ const AppContent: React.FC = () => {
       // In real app, `paymentWorker` webhook updates DB, we just update local state here
       localStorage.setItem('nexus_user_plan', newPlan.tier);
       setIsPricingModalOpen(false);
+      setPricingReason(undefined);
   };
 
   // --- AUTO-SAVE ---
@@ -236,14 +254,26 @@ const AppContent: React.FC = () => {
   }, [user]);
 
   const handleCreateNewProject = async (title: string, desc: string) => {
-      // NOTE: Project limits are checked inside ProjectList.tsx already, 
-      // but double check here for safety? Not strictly needed as button is hidden.
-      if (projects.length >= PLAN_LIMITS[userPlan].PROJECTS) {
-          setIsPricingModalOpen(true);
-          return;
+      try {
+          // NOTE: Client-side check for immediate feedback
+          if (projects.length >= PLAN_LIMITS[userPlan].PROJECTS) {
+              setPricingReason(`Project Limit Reached (${PLAN_LIMITS[userPlan].PROJECTS}). Upgrade to save more.`);
+              setIsPricingModalOpen(true);
+              return;
+          }
+          
+          const newP = await createProject({ title, description: desc });
+          handleOpenProject(newP);
+      } catch (e: any) {
+          // 🔥 SERVER-SIDE GUARD CATCH
+          if (e.message === 'PROJECT_LIMIT_REACHED') {
+              setPricingReason(`Cloud Storage Full (${PLAN_LIMITS[userPlan].PROJECTS} Projects). Upgrade to save more.`);
+              setIsPricingModalOpen(true);
+          } else {
+              console.error("Project Creation Failed", e);
+              alert("Failed to create project. Please try again.");
+          }
       }
-      const newP = await createProject({ title, description: desc });
-      handleOpenProject(newP);
   };
 
   const handleOpenProject = (p: Project) => {
@@ -318,9 +348,8 @@ const AppContent: React.FC = () => {
   }, []);
 
   const handleAddNexus = useCallback((type: NexusType, subtype: NexusSubtype, dropPosition?: { x: number, y: number }) => {
-      // 🔥 USAGE GUARD: CHECK NODE LIMIT
       if (fullPlan && !canAddNode(fullPlan, nexuses.length)) {
-          alert(`Plan limit reached! Maximum ${PLAN_LIMITS[userPlan].MAX_NODES} nodes per workflow on ${userPlan} plan.`);
+          setPricingReason(`Node Limit Reached (${PLAN_LIMITS[userPlan].MAX_NODES}). Upgrade for complex flows.`);
           setIsPricingModalOpen(true);
           return;
       }
@@ -357,14 +386,41 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-[#050505] text-white overflow-hidden relative">
-      <PricingModal isOpen={isPricingModalOpen} onClose={() => setIsPricingModalOpen(false)} onUpgrade={handleUpgrade} />
-      
-      {/* ONBOARDING MODAL */}
-      {isOnboardingOpen && (
-          <OnboardingModal onClose={completeOnboarding} onOpenAI={() => setIsAIAssistantOpen(true)} />
-      )}
+      {/* Suspense Wrappers for Modals */}
+      <Suspense fallback={null}>
+          <PricingModal 
+            isOpen={isPricingModalOpen} 
+            onClose={() => { setIsPricingModalOpen(false); setPricingReason(undefined); }} 
+            onUpgrade={handleUpgrade}
+            triggerReason={pricingReason} 
+          />
+          {isOnboardingOpen && (
+              <OnboardingModal onClose={completeOnboarding} onOpenAI={() => setIsAIAssistantOpen(true)} />
+          )}
+          {isRunModalOpen && (
+            <RunModal 
+                isOpen={isRunModalOpen}
+                onClose={() => setIsRunModalOpen(false)}
+                nexuses={nexuses}
+                synapses={synapses}
+                resumeState={interruptedState}
+            />
+          )}
+          <NodeRegistry isOpen={isRegistryOpen} onClose={() => setIsRegistryOpen(false)} />
+          <RoadmapModal isOpen={isRoadmapOpen} onClose={() => setIsRoadmapOpen(false)} />
+          <CredentialManager isOpen={isCredentialManagerOpen} onClose={() => setIsCredentialManagerOpen(false)} onUpdate={() => {}} />
+          <AIAssistant 
+                isOpen={isAIAssistantOpen}
+                onClose={() => setIsAIAssistantOpen(false)}
+                onApplyStream={handleApplyStream}
+                currentNexuses={nexuses}
+                currentSynapses={synapses}
+                projectContext={currentProject?.description}
+                userPlan={userPlan}
+                onUpgrade={() => { setPricingReason("Architect Quota"); setIsPricingModalOpen(true); }}
+            />
+      </Suspense>
 
-      {/* SETTINGS MODAL */}
       <SettingsModal 
           isOpen={isSettingsOpen} 
           onClose={() => setIsSettingsOpen(false)} 
@@ -392,6 +448,7 @@ const AppContent: React.FC = () => {
 
       <NexusMascot />
       
+      {/* 🔥 PASSED FULL PLAN TO SIDEBAR FOR ROLE CHECK */}
       <Sidebar 
         isOpen={true} 
         onClose={() => {}} 
@@ -404,6 +461,7 @@ const AppContent: React.FC = () => {
         onOpenCredentials={() => setIsCredentialManagerOpen(true)}
         onOpenRegistry={() => setIsRegistryOpen(true)}
         onOpenAI={() => setIsAIAssistantOpen(true)}
+        userPlan={fullPlan}
       />
 
       <div className="flex-1 flex flex-col relative h-full">
@@ -420,76 +478,53 @@ const AppContent: React.FC = () => {
             )}
           </div>
           <div className="flex items-center gap-2">
-             {/* Plan Badge in Header */}
              <div className="text-[9px] font-black uppercase bg-nexus-900 border border-nexus-800 px-2 py-1 rounded text-nexus-accent">
                  {userPlan} PLAN
              </div>
           </div>
         </div>
 
-        {currentView === 'dashboard' ? (
-            <ProjectList 
-                projects={projects}
-                onCreateProject={handleCreateNewProject}
-                onOpenProject={handleOpenProject}
-                onDeleteProject={handleDeleteProject}
-                userPlan={userPlan}
-                onUpgrade={() => setIsPricingModalOpen(true)}
-            />
-        ) : (
-            <div className="flex-1 relative overflow-hidden">
-                <Canvas 
-                    nexuses={nexuses}
-                    synapses={synapses}
-                    selectedId={selectedId}
-                    onSelectNexus={(id) => { setSelectedId(id); if(id) setIsPropertiesOpen(true); }}
-                    onUpdateNexusPosition={handleNexusPositionUpdate}
-                    onAddSynapse={handleAddSynapse}
-                    onDeleteSynapse={handleDeleteSynapse}
-                    onOpenProperties={(id) => { setSelectedId(id); setIsPropertiesOpen(true); }}
-                    onNexusUpdate={handleNexusUpdate}
-                    onNodeAction={(action, id) => {
-                        if (action === 'DELETE') handleDeleteNexus(id);
-                    }}
-                    onAddNexus={handleAddNexus}
+        <Suspense fallback={<LoadingSpinner />}>
+            {currentView === 'dashboard' ? (
+                <ProjectList 
+                    projects={projects}
+                    onCreateProject={handleCreateNewProject}
+                    onOpenProject={handleOpenProject}
+                    onDeleteProject={handleDeleteProject}
+                    userPlan={userPlan}
+                    onUpgrade={() => { setPricingReason("Upgrade to Pro"); setIsPricingModalOpen(true); }}
                 />
-                
-                {isPropertiesOpen && (
-                    <PropertiesPanel 
-                        nexus={nexuses.find(n => n.id === selectedId) || null}
-                        onClose={() => { setIsPropertiesOpen(false); setSelectedId(null); }}
-                        onUpdate={handleNexusUpdate}
-                        onDelete={handleDeleteNexus}
-                        credentials={[]} 
-                        onTest={() => setIsRunModalOpen(true)} 
+            ) : (
+                <div className="flex-1 relative overflow-hidden">
+                    <Canvas 
+                        nexuses={nexuses}
+                        synapses={synapses}
+                        selectedId={selectedId}
+                        onSelectNexus={(id) => { setSelectedId(id); if(id) setIsPropertiesOpen(true); }}
+                        onUpdateNexusPosition={handleNexusPositionUpdate}
+                        onAddSynapse={handleAddSynapse}
+                        onDeleteSynapse={handleDeleteSynapse}
+                        onOpenProperties={(id) => { setSelectedId(id); setIsPropertiesOpen(true); }}
+                        onNexusUpdate={handleNexusUpdate}
+                        onNodeAction={(action, id) => {
+                            if (action === 'DELETE') handleDeleteNexus(id);
+                        }}
+                        onAddNexus={handleAddNexus}
                     />
-                )}
-            </div>
-        )}
-
-        {/* --- GLOBAL MODALS --- */}
-        <RunModal 
-            isOpen={isRunModalOpen}
-            onClose={() => setIsRunModalOpen(false)}
-            nexuses={nexuses}
-            synapses={synapses}
-            resumeState={interruptedState}
-        />
-        
-        <NodeRegistry isOpen={isRegistryOpen} onClose={() => setIsRegistryOpen(false)} />
-        <RoadmapModal isOpen={isRoadmapOpen} onClose={() => setIsRoadmapOpen(false)} />
-        <CredentialManager isOpen={isCredentialManagerOpen} onClose={() => setIsCredentialManagerOpen(false)} onUpdate={() => {}} />
-        <AIAssistant 
-            isOpen={isAIAssistantOpen}
-            onClose={() => setIsAIAssistantOpen(false)}
-            onApplyStream={handleApplyStream}
-            currentNexuses={nexuses}
-            currentSynapses={synapses}
-            projectContext={currentProject?.description}
-            userPlan={userPlan}
-            onUpgrade={() => setIsPricingModalOpen(true)}
-        />
-
+                    
+                    {isPropertiesOpen && (
+                        <PropertiesPanel 
+                            nexus={nexuses.find(n => n.id === selectedId) || null}
+                            onClose={() => { setIsPropertiesOpen(false); setSelectedId(null); }}
+                            onUpdate={handleNexusUpdate}
+                            onDelete={handleDeleteNexus}
+                            credentials={[]} 
+                            onTest={() => setIsRunModalOpen(true)} 
+                        />
+                    )}
+                </div>
+            )}
+        </Suspense>
       </div>
     </div>
   );

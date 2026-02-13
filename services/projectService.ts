@@ -1,6 +1,7 @@
 
 import { db, auth } from './firebase';
 import { Project, NexusType, NexusSubtype } from '../types';
+import { verifyProjectCreationLimit } from './usageGuard';
 import firebase from 'firebase/compat/app';
 
 const COLLECTION_NAME = 'projects';
@@ -47,10 +48,28 @@ export const createProject = async (projectData: { title: string; description?: 
     // Try Cloud if possible
     if (db && auth?.currentUser && !auth.currentUser.isAnonymous) {
         try {
-            const docRef = await db.collection(COLLECTION_NAME).add(newProjectData);
-            return { id: docRef.id, ...newProjectData } as Project;
-        } catch (e) {
-            console.warn("Firebase restricted, saving to Virtual DB.");
+            // 🔥 CORE LIMIT CHECK: Block creation if limit hit
+            await verifyProjectCreationLimit(uid);
+
+            // Atomic Operation: Create Project AND Increment Usage
+            const batch = db.batch();
+            const projectRef = db.collection(COLLECTION_NAME).doc();
+            const userRef = db.collection('users').doc(uid);
+
+            batch.set(projectRef, newProjectData);
+            batch.update(userRef, { 
+                'usage.workflows': firebase.firestore.FieldValue.increment(1) 
+            });
+
+            await batch.commit();
+            
+            return { id: projectRef.id, ...newProjectData } as Project;
+        } catch (e: any) {
+            // If the error comes from our guard, rethrow it to UI
+            if (e.message === 'PROJECT_LIMIT_REACHED') {
+                throw e; 
+            }
+            console.warn("Firebase restricted or network fail, saving to Virtual DB.", e);
         }
     }
 
@@ -143,7 +162,21 @@ export const updateProject = async (id: string, updates: Partial<Project>) => {
 export const deleteProject = async (id: string) => {
     if (db && !id.startsWith('local_')) {
         try {
-            await db.collection(COLLECTION_NAME).doc(id).delete();
+            // Atomic: Delete Project AND Decrement Usage
+            const batch = db.batch();
+            const projectRef = db.collection(COLLECTION_NAME).doc(id);
+            const uid = auth?.currentUser?.uid;
+            
+            if (uid) {
+                const userRef = db.collection('users').doc(uid);
+                batch.delete(projectRef);
+                batch.update(userRef, { 
+                    'usage.workflows': firebase.firestore.FieldValue.increment(-1) 
+                });
+                await batch.commit();
+            } else {
+                await projectRef.delete();
+            }
             return;
         } catch (e) {}
     }

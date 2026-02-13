@@ -1,6 +1,7 @@
 
 import { PlanTier, Region } from '../types';
 import { ADDON_PACKS } from '../constants';
+import { functions } from './firebase'; // 🔥 Use real functions
 
 // --- CONFIGURATION ---
 const RAZORPAY_KEY_ID = "rzp_test_1234567890"; // REPLACE WITH LIVE KEY
@@ -103,9 +104,20 @@ export const PaymentGateway = {
         return true;
     },
 
+    /**
+     * Verify Payment on Backend (Secure)
+     */
     async verifyBackend(payload: any): Promise<boolean> {
-        await new Promise(r => setTimeout(r, 1000));
-        return true;
+        if (!functions) return true; // Dev mode fallback
+        
+        try {
+            const verifyFn = functions.httpsCallable('verifyPayment');
+            await verifyFn(payload);
+            return true;
+        } catch (error) {
+            console.error("Payment Verification Failed:", error);
+            return false;
+        }
     },
 
     async cancelSubscription(subscriptionId: string, provider: 'RAZORPAY' | 'PAYPAL'): Promise<boolean> {

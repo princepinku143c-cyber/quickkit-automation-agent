@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { Zap, Layout, Brain, Shield, AlertTriangle, MessageSquare, Check, ArrowRight, PlayCircle, Lock } from 'lucide-react';
 
@@ -64,12 +63,12 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onDemo }) => {
           </div>
           
           <h1 className="text-5xl md:text-7xl font-black tracking-tighter mb-6 leading-[1.1] animate-in fade-in slide-in-from-bottom-6 duration-500">
-            Design Automations <br/>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-nexus-accent to-blue-500">Smarter with AI</span>
+            Build No-Code <br/>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-nexus-accent to-blue-500">AI Automation Workflows</span>
           </h1>
           
           <p className="text-lg md:text-xl text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed animate-in fade-in slide-in-from-bottom-8 duration-700">
-            Plan, validate, and improve workflow logic visually — <span className="text-white font-semibold">before you build or run anything.</span>
+            NexusStream helps you build, test, and deploy intelligent workflows without writing code. Plan logic visually and let AI handle the complexity.
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-in fade-in slide-in-from-bottom-10 duration-1000">
@@ -91,22 +90,19 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onDemo }) => {
             <div className="absolute inset-0 bg-nexus-accent/20 blur-3xl -z-10 opacity-20 group-hover:opacity-30 transition-opacity"></div>
             <div className="bg-[#0a0a0a] border border-white/10 rounded-[32px] p-2 shadow-2xl overflow-hidden">
                 <div className="bg-[#050505] rounded-[24px] border border-white/5 aspect-[16/9] relative flex items-center justify-center overflow-hidden">
-                    {/* Abstract UI Representation */}
-                    <div className="absolute inset-0 grid-pattern opacity-30"></div>
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[80%] border border-nexus-accent/20 rounded-xl bg-nexus-900/50 backdrop-blur-sm flex items-center justify-center">
+                    <img 
+                        src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1920&q=80" 
+                        alt="AI Workflow Builder Interface" 
+                        className="absolute inset-0 w-full h-full object-cover opacity-60"
+                        loading="lazy"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#050505] to-transparent"></div>
+                    
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[80%] border border-nexus-accent/20 rounded-xl bg-nexus-900/80 backdrop-blur-sm flex items-center justify-center">
                         <div className="text-center space-y-4">
                             <Brain size={48} className="text-nexus-accent mx-auto animate-pulse" />
                             <div className="text-sm font-mono text-nexus-accent">AI Architect: "Analyzing Logic..."</div>
                         </div>
-                    </div>
-                    {/* Floating Nodes */}
-                    <div className="absolute top-20 left-20 p-4 bg-nexus-900 border border-white/10 rounded-xl flex items-center gap-3 shadow-xl animate-float">
-                        <MessageSquare size={20} className="text-blue-400"/>
-                        <div className="w-20 h-2 bg-white/10 rounded"></div>
-                    </div>
-                    <div className="absolute bottom-20 right-20 p-4 bg-nexus-900 border border-white/10 rounded-xl flex items-center gap-3 shadow-xl animate-float" style={{ animationDelay: '1s' }}>
-                        <Layout size={20} className="text-purple-400"/>
-                        <div className="w-24 h-2 bg-white/10 rounded"></div>
                     </div>
                 </div>
             </div>
@@ -117,15 +113,15 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onDemo }) => {
       <section id="features" className="py-24 border-t border-white/5 bg-[#080808]">
         <div className="max-w-7xl mx-auto px-6">
             <div className="text-center mb-16">
-                <h2 className="text-3xl md:text-4xl font-black mb-4">Think Before You Automate</h2>
+                <h2 className="text-3xl md:text-4xl font-black mb-4">Visual Workflow Builder</h2>
                 <p className="text-gray-400 max-w-2xl mx-auto">Most tools force you to build and run immediately. We help you design the logic first, so you don't waste time fixing broken flows later.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {[
                     { icon: Layout, title: "Visual Canvas", desc: "Design automation logic visually. Drag, drop, and connect ideas without code." },
-                    { icon: Brain, title: "AI Architect", desc: "Chat with an AI that understands automation. It suggests, validates, and builds for you." },
-                    { icon: AlertTriangle, title: "Safe Design", desc: "Get warnings for broken logic before you deploy. No accidental infinite loops." }
+                    { icon: Brain, title: "AI-Powered Automation", desc: "Chat with an AI that understands automation. It suggests, validates, and builds for you." },
+                    { icon: AlertTriangle, title: "Deploy & Scale Easily", desc: "Get warnings for broken logic before you deploy. No accidental infinite loops." }
                 ].map((card, i) => (
                     <div key={i} className="p-8 bg-white/[0.02] border border-white/5 rounded-3xl hover:bg-white/[0.04] transition-all group">
                         <div className="w-14 h-14 bg-nexus-900 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform border border-white/5">
@@ -160,14 +156,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onDemo }) => {
                               <span className="text-sm font-bold text-gray-300">{item}</span>
                           </div>
                       ))}
-                  </div>
-
-                  <div className="p-4 bg-nexus-900/50 border border-nexus-800 rounded-xl flex items-start gap-4">
-                      <Lock size={20} className="text-nexus-wire mt-1 shrink-0"/>
-                      <div>
-                          <h4 className="text-xs font-black text-white uppercase tracking-wider mb-1">Honest Note</h4>
-                          <p className="text-xs text-gray-500 leading-relaxed">The AI agent designs and explains workflows. It does not execute automations directly.</p>
-                      </div>
                   </div>
               </div>
               
@@ -252,22 +240,30 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onDemo }) => {
           </div>
       </section>
 
-      {/* FINAL CTA */}
-      <section className="py-24 px-6 text-center">
-          <div className="max-w-4xl mx-auto bg-gradient-to-br from-nexus-900 to-black border border-white/10 rounded-[40px] p-12 relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-full bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
-              <div className="relative z-10">
-                  <h2 className="text-3xl md:text-5xl font-black mb-6 text-white">Start Designing Smarter Today</h2>
-                  <p className="text-gray-400 mb-10 text-lg">No credit card. No execution risk. Just better thinking.</p>
-                  <button onClick={() => onNavigate('signup')} className="px-10 py-5 bg-nexus-accent text-black font-black rounded-2xl text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-2xl">
-                      Start Free Now
-                  </button>
-              </div>
-          </div>
+      {/* SEO Content Block (Footer Area) */}
+      <section className="py-24 bg-[#050505] border-t border-white/5">
+        <div className="max-w-4xl mx-auto px-6 text-center">
+            <h2 className="text-2xl font-bold mb-4 text-gray-300">What is NexusStream?</h2>
+            <p className="text-gray-500 leading-relaxed text-sm mb-8">
+                NexusStream is an AI-powered no-code automation platform that allows users to design, test, and deploy intelligent workflows without writing code. 
+                Whether you need to connect CRMs, automate social media, or build complex data pipelines, our visual builder makes it simple.
+            </p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-left text-xs text-gray-600">
+                <div>
+                    <h3 className="font-bold text-gray-400 mb-2">For Developers</h3>
+                    <p>Extend capabilities with custom JavaScript nodes, API integrations, and webhook triggers. Deploy serverless functions visually.</p>
+                </div>
+                <div>
+                    <h3 className="font-bold text-gray-400 mb-2">For Business</h3>
+                    <p>Automate repetitive tasks, sync data between apps, and use AI agents to handle customer inquiries 24/7.</p>
+                </div>
+            </div>
+        </div>
       </section>
 
       {/* FOOTER */}
-      <footer className="py-12 border-t border-white/5 text-center text-xs text-gray-600">
+      <footer className="py-12 border-t border-white/5 text-center text-xs text-gray-600 bg-[#0a0a0a]">
           <div className="flex justify-center gap-8 mb-8 font-bold uppercase tracking-widest">
               <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
               <button onClick={handleDocsClick} className="hover:text-white transition-colors">How it Works</button>

@@ -7,6 +7,7 @@
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 import 'firebase/compat/firestore';
+import 'firebase/compat/functions'; // 🔥 Added Functions
 
 /* =====================================================
    NEXUSSTREAM – SECURE FIREBASE CONFIGURATION
@@ -82,6 +83,7 @@ if (!firebaseConfig) {
 let app: firebase.app.App;
 let auth: firebase.auth.Auth;
 let db: firebase.firestore.Firestore;
+let functions: firebase.functions.Functions; // 🔥 Added Type
 let googleProvider: firebase.auth.GoogleAuthProvider;
 
 if (firebaseConfig && firebaseConfig.apiKey) {
@@ -96,6 +98,7 @@ if (firebaseConfig && firebaseConfig.apiKey) {
         if (typeof app !== 'undefined') {
             auth = firebase.auth();
             db = firebase.firestore();
+            functions = app.functions(); // 🔥 Init Functions
 
             // 🔁 Offline persistence (safe wrap)
             db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
@@ -113,4 +116,4 @@ if (firebaseConfig && firebaseConfig.apiKey) {
     console.warn("⚠️ Firebase Config Missing. Environment variables not loaded.");
 }
 
-export { app, auth, db, googleProvider };
+export { app, auth, db, functions, googleProvider };

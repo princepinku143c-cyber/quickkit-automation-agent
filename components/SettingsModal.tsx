@@ -154,14 +154,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                                     <h3 className="text-3xl font-black text-white mb-2">{planName}</h3>
                                     <div className="flex items-center gap-2 mt-2">
                                         {userPlan.tier === 'FREE' ? (
-                                            <span className="text-xs text-gray-400">Free Forever</span>
+                                            <span className="text-xs text-red-500 font-bold bg-red-900/20 px-2 py-1 rounded border border-red-900/30">You are on Free Plan</span>
                                         ) : (
                                             <>
                                                 <span className={`px-2 py-1 rounded text-[9px] font-bold uppercase ${userPlan.autoRenew ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-500'}`}>
                                                     {userPlan.autoRenew ? 'Active' : 'Cancelled'}
                                                 </span>
                                                 <span className="text-xs text-gray-500">
-                                                    {userPlan.autoRenew ? `Renews on ${expiryDate}` : `Access until ${expiryDate}`}
+                                                    Plan valid till: <strong className="text-white">{expiryDate}</strong>
                                                 </span>
                                             </>
                                         )}

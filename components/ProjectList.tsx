@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Project, ProjectStatus, PlanTier } from '../types';
-import { Search, Plus, Trash2, Layout, Clock, PlayCircle, ShieldAlert, WifiOff, Lock } from 'lucide-react';
+import { Search, Plus, Trash2, Layout, Clock, PlayCircle, ShieldAlert, WifiOff, Lock, Activity, Calendar, Zap, CreditCard } from 'lucide-react';
 import { checkDbConnection } from '../services/projectService';
 import { useAuth } from '../context/AuthContext';
 import { PLAN_LIMITS } from '../constants';
@@ -53,13 +53,65 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onCreateProject, on
     }
   };
 
-  // CHECK LIMITS
-  const projectLimit = PLAN_LIMITS[userPlan].PROJECTS;
+  // LIMITS & STATS
+  const currentLimits = PLAN_LIMITS[userPlan];
+  const projectLimit = currentLimits.PROJECTS;
   const isLimitReached = projects.length >= projectLimit;
+  
+  // Safe Usage Data
+  const runsUsed = (user as any)?.usage?.runs || 0;
+  const planExpiry = (user as any)?.expiresAt ? new Date((user as any).expiresAt).toLocaleDateString() : null;
 
   return (
     <div className="flex-1 h-full bg-[#050505] overflow-y-auto p-6 md:p-10 font-sans">
       
+      {/* 🧱 3️⃣ CLEAN DASHBOARD STATUS WIDGET */}
+      <div className="bg-gray-100 p-6 rounded-2xl mb-10 border border-gray-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm text-blue-600">
+                  <CreditCard size={24} />
+              </div>
+              <div>
+                  <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">Current Plan</p>
+                  <div className="text-2xl font-black text-gray-900 uppercase">{userPlan}</div>
+              </div>
+          </div>
+
+          <div className="flex-1 w-full md:w-auto md:px-8 border-l border-gray-300 ml-4">
+              <div className="flex justify-between text-xs font-bold text-gray-600 mb-1">
+                  <span>Runs (AI Executions)</span>
+                  <span>{runsUsed} / {currentLimits.RUNS}</span>
+              </div>
+              <div className="w-full h-2 bg-gray-300 rounded-full overflow-hidden mb-3">
+                  <div className="h-full bg-blue-600" style={{ width: `${Math.min((runsUsed / currentLimits.RUNS) * 100, 100)}%` }}></div>
+              </div>
+
+              {/* PROJECT STORAGE METER */}
+              <div className="flex justify-between text-xs font-bold text-gray-600 mb-1">
+                  <span>Saved Workflows</span>
+                  <span>{projects.length} / {userPlan === 'FREE' ? projectLimit : '∞'}</span>
+              </div>
+              <div className="w-full h-2 bg-gray-300 rounded-full overflow-hidden">
+                  <div className={`h-full ${isLimitReached && userPlan === 'FREE' ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${userPlan === 'FREE' ? Math.min((projects.length / projectLimit) * 100, 100) : 100}%` }}></div>
+              </div>
+
+              {planExpiry && (
+                  <p className="text-[10px] text-gray-500 mt-2 font-mono">
+                      Valid Till: {planExpiry}
+                  </p>
+              )}
+          </div>
+
+          {userPlan === 'FREE' && (
+              <button 
+                onClick={onUpgrade}
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+              >
+                  Upgrade Now
+              </button>
+          )}
+      </div>
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
         <div>
           <h1 className="text-3xl font-black text-white mb-2 flex items-center gap-3">
@@ -69,7 +121,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onCreateProject, on
           <p className="text-gray-500 text-sm font-medium">Manage and deploy your automated workflows.</p>
         </div>
         <div className="flex gap-3">
-             {/* Show DB Status only if locked/offline to alert user */}
+             {/* Show DB Status only if locked/offline */}
              {dbStatus !== 'CONNECTED' && !user?.isAnonymous && (
                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border ${dbStatus === 'LOCKED' ? 'bg-red-900/20 border-red-800 text-red-500' : 'bg-gray-900 border-gray-800 text-gray-500'}`}>
                      {dbStatus === 'LOCKED' ? <ShieldAlert size={14}/> : <WifiOff size={14}/>}
@@ -159,7 +211,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onCreateProject, on
         {/* Helper Card for Free Plan Limit Context */}
         {userPlan === 'FREE' && projects.length === 0 && (
             <div className="bg-nexus-900/20 border-2 border-dashed border-nexus-800 rounded-[24px] p-6 flex flex-col items-center justify-center text-center opacity-60">
-                <p className="text-xs text-gray-500 mb-2">Free Plan Limit: 1 Project</p>
+                <p className="text-xs text-gray-500 mb-2">Free Plan Limit: {projectLimit} Projects</p>
                 <div className="text-[10px] text-gray-600">Create your first automation to get started.</div>
             </div>
         )}
