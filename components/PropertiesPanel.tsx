@@ -96,7 +96,8 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ nexus, onClose, onUpd
       ].includes(subtype)) {
           return <LogicConfig subtype={subtype} config={safeConfig} onChange={handleChange} />;
       }
-      if ([NexusSubtype.AWS_S3, NexusSubtype.GOOGLE_DRIVE, NexusSubtype.FTP, NexusSubtype.READ_BINARY_FILE, NexusSubtype.WRITE_BINARY_FILE, NexusSubtype.MYSQL, NexusSubtype.POSTGRES, NexusSubtype.MONGODB, NexusSubtype.SQLITE, NexusSubtype.SUPABASE].includes(subtype)) {
+      // Removed MONGODB from this list
+      if ([NexusSubtype.AWS_S3, NexusSubtype.GOOGLE_DRIVE, NexusSubtype.FTP, NexusSubtype.READ_BINARY_FILE, NexusSubtype.WRITE_BINARY_FILE, NexusSubtype.MYSQL, NexusSubtype.POSTGRES, NexusSubtype.SQLITE, NexusSubtype.SUPABASE].includes(subtype)) {
           return <StorageConfig subtype={subtype} config={safeConfig} onChange={handleChange} />;
       }
       return (

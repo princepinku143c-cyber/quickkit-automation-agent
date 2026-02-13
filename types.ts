@@ -80,7 +80,6 @@ export enum NexusSubtype {
   // --- DATABASES ---
   MYSQL = 'MYSQL',
   POSTGRES = 'POSTGRES',
-  MONGODB = 'MONGODB',
   SQLITE = 'SQLITE',
   SUPABASE = 'SUPABASE',
   
@@ -336,10 +335,22 @@ export interface UserPlan {
     // New Usage Object
     usage?: UserUsage;
     warningSent?: boolean; // 🔥 NEW: Track if 80% usage warning has been sent
+    lastUsageReset?: number; // 🔥 NEW: Monthly reset tracker
 
     referralCode?: string;
     createdAt?: number; 
     onboardingDone?: boolean; 
+
+    // For backend structure compatibility
+    plan?: {
+        tier?: PlanTier;
+        monthlyLimit?: number;
+        credits?: number;
+        status?: string;
+        provider?: string;
+        autoRenew?: boolean;
+        expiresAt?: number;
+    };
 }
 
 // --- ADMIN SYSTEM TYPES ---

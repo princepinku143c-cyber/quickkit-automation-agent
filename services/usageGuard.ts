@@ -6,58 +6,89 @@ import firebase from 'firebase/compat/app';
 
 const USERS_COLLECTION = 'users';
 
-// --- 🧠 CORE ENGINE LOGIC (Private) ---
+// --- 🧠 CORE ENGINE LOGIC ---
 
 /**
- * Resolves the true state of a user's plan.
- * Checks expiry dates and enforces auto-downgrade logic.
- * Returns the effective data and any necessary DB updates.
+ * Checks if the usage cycle needs a reset (Monthly Rolling).
+ * Applies to ALL users (Free & Paid) to ensure quotas refresh.
  */
-function _resolveEffectivePlan(userData: UserPlan): { 
-    effectiveTier: string; 
-    isExpired: boolean; 
-    updates: Record<string, any>;
-} {
+function _checkMonthlyReset(userData: UserPlan): { needsReset: boolean; updates: Record<string, any> } {
     const now = Date.now();
-    
-    // 1. Check if plan is time-expired
-    if (userData.tier !== 'FREE' && userData.tier !== 'BUSINESS' && userData.expiresAt && userData.expiresAt < now) {
-        // Prepare downgrade payload
+    const lastReset = userData.lastUsageReset || userData.createdAt || 0;
+    const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
+
+    // If more than 30 days have passed since last reset
+    if (now - lastReset > oneMonthMs) {
+        // Fallback logic for monthly limit source
+        const resetLimit = userData.plan?.monthlyLimit ?? userData.monthlyLimit ?? 5;
         return {
-            effectiveTier: 'FREE',
-            isExpired: true,
+            needsReset: true,
             updates: {
-                tier: 'FREE',
-                'plan.tier': 'FREE', // Deep update
-                'plan.status': 'expired',
-                expiresAt: 0,
-                credits: 5, // Reset legacy credits to Free tier baseline
-                usage: { workflows: 0, runs: 0, apiCalls: 0 }, // Reset usage on downgrade
-                warningSent: false
+                'usage.workflows': 0,
+                'usage.runs': 0,
+                'usage.apiCalls': 0,
+                'plan.credits': resetLimit,
+                warningSent: false,
+                lastUsageReset: now
             }
         };
     }
-
-    return {
-        effectiveTier: userData.tier,
-        isExpired: false,
-        updates: {}
-    };
+    return { needsReset: false, updates: {} };
 }
 
 /**
- * Generic Transaction Handler for all Usage types.
- * @param uid User ID
- * @param metric The usage metric to check/increment ('runs' | 'apiCalls' | 'workflows')
- * @param cost How much to increment
- * @returns boolean (Allowed/Denied)
+ * Resolves plan state, expiry, and resets.
+ */
+function _resolveEffectivePlan(userData: UserPlan): { 
+    effectiveTier: string; 
+    updates: Record<string, any>;
+} {
+    const now = Date.now();
+    let updates: Record<string, any> = {};
+    let effectiveTier = userData.tier;
+
+    // 1. Check Expiry (Downgrade Logic)
+    if (userData.tier !== 'FREE' && userData.tier !== 'BUSINESS' && userData.expiresAt && userData.expiresAt < now) {
+        // Plan Expired -> Downgrade
+        effectiveTier = 'FREE';
+        updates = {
+            ...updates,
+            'plan.tier': 'FREE',
+            'plan.status': 'expired',
+            'plan.credits': 5,
+            tier: 'FREE', // Sync
+            // We don't reset usage here, we let the monthly check handle it, or reset it now
+            // Safe bet: Reset usage on downgrade to Free tier limits
+            'usage.workflows': 0,
+            'usage.runs': 0,
+            'usage.apiCalls': 0,
+            lastUsageReset: now
+        };
+    }
+
+    // 2. Check Monthly Reset (Lazy Cron)
+    // Only run this if we haven't already decided to reset via downgrade
+    if (!updates['lastUsageReset']) {
+        const resetCheck = _checkMonthlyReset(userData);
+        if (resetCheck.needsReset) {
+            console.log(`[UsageGuard] Triggering Monthly Reset for ${userData.uid}`);
+            updates = { ...updates, ...resetCheck.updates };
+        }
+    }
+
+    return { effectiveTier, updates };
+}
+
+/**
+ * Generic Transaction Handler.
+ * Calculates limits, applies resets, and increments usage.
  */
 async function _processUsageTransaction(
     uid: string, 
     metric: keyof UserUsage, 
     cost: number
 ): Promise<boolean> {
-    if (!db) return true; // Fail-open if DB unavailable (Auth/Network issue)
+    if (!db) return true;
     if (cost === 0) return true;
 
     const userRef = db.collection(USERS_COLLECTION).doc(uid);
@@ -65,31 +96,28 @@ async function _processUsageTransaction(
     try {
         return await db.runTransaction(async (transaction) => {
             const doc = await transaction.get(userRef);
-            
-            // Allow if user doesn't exist yet (will be created by auth hook)
             if (!doc.exists) return true;
 
             const userData = doc.data() as UserPlan;
-            const { effectiveTier, isExpired, updates } = _resolveEffectivePlan(userData);
+            const { effectiveTier, updates } = _resolveEffectivePlan(userData);
 
-            // 1. Apply Downgrade if needed
-            if (isExpired) {
-                console.log(`[CoreEngine] Auto-downgrading user ${uid} to FREE.`);
+            // 1. Apply Lazy Updates (Downgrade or Monthly Reset)
+            if (Object.keys(updates).length > 0) {
                 transaction.update(userRef, updates);
             }
 
-            // 2. Bypass for Business Tier (Unlimited)
+            // 2. Bypass for Business (Unlimited)
             if (effectiveTier === 'BUSINESS') {
-                // Still track usage for analytics
                 transaction.update(userRef, { 
                     [`usage.${metric}`]: firebase.firestore.FieldValue.increment(cost) 
                 });
                 return true;
             }
 
-            // 3. Check Limits against Effective Tier
-            // Use local usage variable if we just reset it, otherwise DB value
-            const currentUsage = isExpired ? 0 : (userData.usage?.[metric] || 0);
+            // 3. Check Limits
+            // If we just reset usage in 'updates', consider current usage as 0
+            const isResetting = !!updates['usage.runs'];
+            const currentUsage = isResetting ? 0 : (userData.usage?.[metric] || 0);
             
             const limits = PLAN_LIMITS[effectiveTier as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.FREE;
             let limitValue = 0;
@@ -99,18 +127,22 @@ async function _processUsageTransaction(
             if (metric === 'workflows') limitValue = limits.PROJECTS;
 
             if (currentUsage + cost > limitValue) {
-                console.warn(`[CoreEngine] Limit Reached (${metric}): ${currentUsage}/${limitValue}`);
-                return false;
+                // If we are strictly checking, block.
+                // NOTE: If we just downgraded/reset, we allow this first call.
+                if (!isResetting) {
+                    console.warn(`[UsageGuard] Limit Reached (${metric}): ${currentUsage}/${limitValue}`);
+                    return false;
+                }
             }
 
-            // 4. Increment Usage
+            // 4. Increment
             const fieldUpdates: any = {
                 [`usage.${metric}`]: firebase.firestore.FieldValue.increment(cost)
             };
 
-            // Legacy Sync for 'credits' (only for apiCalls)
+            // Sync legacy credits field
             if (metric === 'apiCalls') {
-                fieldUpdates['credits'] = firebase.firestore.FieldValue.increment(-cost);
+                fieldUpdates['plan.credits'] = firebase.firestore.FieldValue.increment(-cost);
                 fieldUpdates['aiUsed'] = firebase.firestore.FieldValue.increment(cost);
             }
 
@@ -118,27 +150,21 @@ async function _processUsageTransaction(
             return true;
         });
     } catch (e) {
-        console.error(`[CoreEngine] Transaction Failed (${metric}):`, e);
+        console.error(`[UsageGuard] Transaction Error:`, e);
         return false;
     }
 }
 
-// --- 🚀 PUBLIC API (WRAPPERS) ---
+// --- PUBLIC API ---
 
-/**
- * Checks if user is allowed to create a new project.
- * Throws an error if limit reached to block DB write.
- */
 export const verifyProjectCreationLimit = async (uid: string): Promise<void> => {
-    if (!db) return; // Allow if offline/no-db (Guest mode logic handled elsewhere)
-
+    if (!db) return;
     const userDoc = await db.collection(USERS_COLLECTION).doc(uid).get();
-    if (!userDoc.exists) return; // Should allow, profile might be creating
+    if (!userDoc.exists) return;
 
     const userData = userDoc.data() as UserPlan;
     const { effectiveTier } = _resolveEffectivePlan(userData);
 
-    // Business is Unlimited
     if (effectiveTier === 'BUSINESS') return;
 
     const limit = PLAN_LIMITS[effectiveTier as keyof typeof PLAN_LIMITS]?.PROJECTS || 3;
@@ -149,40 +175,26 @@ export const verifyProjectCreationLimit = async (uid: string): Promise<void> => 
     }
 };
 
-/**
- * Checks and consumes AI Credits.
- * Used by: AIAssistant, AI Nodes.
- */
 export const checkAndConsumeCredit = async (uid: string, cost: number = 1): Promise<boolean> => {
     return _processUsageTransaction(uid, 'apiCalls', cost);
 };
 
-/**
- * Checks if user can execute a workflow run.
- * Used by: ExecutionEngine, RunModal.
- */
 export const checkRunLimit = async (uid: string): Promise<boolean> => {
     return _processUsageTransaction(uid, 'runs', 1);
 };
 
-// --- VISUAL CHECKS (Client-Side Only) ---
-// These are for UI disabling. The actual enforcement happens in DB write rules or the functions above.
-
+// Client-Side Visual Checks
 export const canCreateWorkflow = (userPlan: UserPlan, currentProjectCount: number): boolean => {
     const { effectiveTier } = _resolveEffectivePlan(userPlan);
     if (effectiveTier === 'BUSINESS') return true;
-    
     const limit = PLAN_LIMITS[effectiveTier as keyof typeof PLAN_LIMITS]?.PROJECTS || 3;
-    // Prefer usage counter from DB object, fallback to passed count (length of array)
     const usage = userPlan.usage?.workflows ?? currentProjectCount;
-    
     return usage < limit;
 };
 
 export const canAddNode = (userPlan: UserPlan, currentNodeCount: number): boolean => {
     const { effectiveTier } = _resolveEffectivePlan(userPlan);
     if (effectiveTier === 'BUSINESS') return true;
-    
     const limit = PLAN_LIMITS[effectiveTier as keyof typeof PLAN_LIMITS]?.MAX_NODES || 10;
     return currentNodeCount < limit;
 };

@@ -1,113 +1,95 @@
 
-/**
- * NEXUS STREAM - ENTERPRISE PAYMENT WORKER
- * 
- * Includes:
- * 1. Safe Handler Wrapper
- * 2. Razorpay Double Security Patch
- * 3. Idempotency Checks
- */
-
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
-import nodemailer from 'nodemailer';
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 
-// --- CONFIGURATION ---
-const RAZORPAY_KEY_ID = process.env.RZP_KEY_ID || 'test_key';
-const RAZORPAY_SECRET = process.env.RZP_KEY_SECRET || 'test_secret';
-const RAZORPAY_WEBHOOK_SECRET = process.env.RZP_WEBHOOK_SECRET || 'test_wh_secret';
+// --- SECRETS ---
+const RAZORPAY_KEY_ID = process.env.RZP_KEY_ID || '';
+const RAZORPAY_SECRET = process.env.RZP_KEY_SECRET || '';
 
 const razorpay = new Razorpay({
     key_id: RAZORPAY_KEY_ID,
     key_secret: RAZORPAY_SECRET,
 });
 
-// --- SAFE API WRAPPER (BACKEND) ---
 const safeHandler = async (fn: () => Promise<any>) => {
     try {
         return await fn();
     } catch (error: any) {
-        console.error("SafeHandler Caught:", error);
-        // Map to standard HTTP errors for the client
-        throw new functions.https.HttpsError(
-            error.code || 'internal', 
-            error.message || "Operation failed securely."
-        );
+        console.error("SafeHandler Error:", error);
+        throw new functions.https.HttpsError(error.code || 'internal', error.message || "Operation failed.");
     }
 };
 
-// --- HELPER: ATOMIC USER UPGRADE ---
+// --- CORE UPGRADE LOGIC (Used by verifyPayment) ---
 async function processSuccessfulPayment(userId: string, provider: string, refId: string, notes: any) {
     const userRef = db.collection('users').doc(userId);
     
-    await db.runTransaction(async (t) => {
-        const userDoc = await t.get(userRef);
-        const userData = userDoc.data();
+    const tier = notes.tier || 'PRO';
+    const limits = {
+        'PRO': { credits: 5000, limit: 5000 },
+        'BUSINESS': { credits: 20000, limit: 20000 }
+    };
+    const tierConfig = limits[tier as keyof typeof limits] || limits['PRO'];
 
-        // ADD-ON LOGIC
+    await db.runTransaction(async (t) => {
+        // ADDON
         if (notes.type === 'ADDON') {
-            const creditsToAdd = parseInt(notes.credits || '0');
-            t.set(userRef, {
-                plan: {
-                    credits: (userData?.plan?.credits || 0) + creditsToAdd,
-                }
-            }, { merge: true });
+            const addCredits = parseInt(notes.credits || '0');
+            t.update(userRef, {
+                'plan.credits': admin.firestore.FieldValue.increment(addCredits)
+            });
             return;
         }
 
-        // SUBSCRIPTION LOGIC
-        const newExpiry = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 Days
+        // SUBSCRIPTION UPGRADE
+        const newExpiry = Date.now() + 30 * 24 * 60 * 60 * 1000;
         t.set(userRef, {
             plan: {
-                tier: notes.tier || 'PRO',
+                tier: tier,
                 status: 'active',
                 provider: provider,
                 lastPaymentId: refId,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 autoRenew: true,
                 expiresAt: newExpiry, 
-                credits: (notes.tier === 'BUSINESS' ? 20000 : 5000),
-                monthlyLimit: (notes.tier === 'BUSINESS' ? 20000 : 5000)
+                credits: tierConfig.credits,
+                monthlyLimit: tierConfig.limit
             },
-            usage: { workflows: 0, runs: 0, apiCalls: 0 }, // Reset Usage
+            tier: tier, // Legacy sync
+            // Reset Usage
+            usage: { workflows: 0, runs: 0, apiCalls: 0 },
+            lastUsageReset: Date.now(),
             warningSent: false,
-            tier: notes.tier || 'PRO', // Legacy sync
             expiresAt: newExpiry
         }, { merge: true });
     });
 }
 
-// --- 1. VERIFY PAYMENT (Double Protection) ---
+// --- VERIFY PAYMENT ---
 export const verifyPayment = functions.https.onCall(async (data, context) => {
-    // Session Check
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User not logged in');
 
     return safeHandler(async () => {
         const { paymentId, orderId, signature } = data;
 
-        // 🔥 PAYMENT SAFETY PATCH
-        if (!paymentId || !orderId || !signature) {
-             throw new Error("Invalid request: Missing verification credentials.");
-        }
+        if (!paymentId || !orderId || !signature) throw new Error("Missing verification credentials.");
 
-        // Verify Razorpay Signature (HMAC SHA256)
+        // HMAC Check
         const generatedSignature = crypto.createHmac('sha256', RAZORPAY_SECRET)
             .update(orderId + "|" + paymentId)
             .digest('hex');
 
         if (generatedSignature !== signature) {
-            console.error(`Security Alert: Signature Mismatch.`);
             throw new Error("Invalid Payment Signature.");
         }
 
-        // Fulfill Order
         const orderDoc = await db.collection('payments').doc(orderId).get();
-        if (!orderDoc.exists) throw new Error("Order record not found.");
+        if (!orderDoc.exists) throw new Error("Order not found.");
         
         const orderData = orderDoc.data();
         
@@ -127,7 +109,7 @@ export const verifyPayment = functions.https.onCall(async (data, context) => {
     });
 });
 
-// --- 2. CREATE ORDER (Safe Wrapped) ---
+// --- CREATE ORDER ---
 export const createOrder = functions.https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
 
@@ -155,32 +137,5 @@ export const createOrder = functions.https.onCall(async (data, context) => {
         });
 
         return { id: order.id, amount: order.amount, currency: order.currency };
-    });
-});
-
-// --- 3. REFUND (Safe Wrapped) ---
-export const refundTransaction = functions.https.onCall(async (data, context) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
-    
-    return safeHandler(async () => {
-        const { paymentId, reason } = data;
-        const uid = context.auth!.uid;
-
-        // Verify ownership
-        const paymentDoc = await db.collection('payments').where('paymentId', '==', paymentId).where('userId', '==', uid).get();
-        if (paymentDoc.empty) throw new Error('Transaction not found.');
-
-        // Process Refund
-        await razorpay.payments.refund(paymentId, { notes: { reason } });
-
-        // Downgrade User
-        await db.collection('users').doc(uid).update({
-            'plan.tier': 'FREE',
-            'plan.status': 'refunded',
-            'plan.credits': 5,
-            'tier': 'FREE'
-        });
-
-        return { success: true };
     });
 });

@@ -2,9 +2,8 @@
 import * as admin from 'firebase-admin';
 import crypto from 'crypto';
 
-// --- INIT GUARD ---
+// Ensure Admin SDK is initialized
 if (!admin.apps.length) {
-  try {
     const privateKey = process.env.FIREBASE_PRIVATE_KEY;
     if (privateKey) {
         admin.initializeApp({
@@ -14,69 +13,96 @@ if (!admin.apps.length) {
                 privateKey: privateKey.replace(/\\n/g, '\n'),
             })
         });
+    } else {
+        admin.initializeApp();
     }
-  } catch (e) { console.error("Firebase Init Failed", e); }
 }
 
 const db = admin.firestore();
 
 export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).end();
 
   try {
-    // Note: Vercel functions parse body by default. 
-    // To verify signature, we need raw body. 
-    // For this implementation, we assume req.body is JSON and we stringify it (approximation).
-    // In production Vercel, you might need `export const config = { api: { bodyParser: false } }`
-    // and read the stream. Here we use a safe approximation for demo.
-    
     const signature = req.headers['x-razorpay-signature'] as string;
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
-    // Skip signature check if secret not configured (Dev Mode)
-    if (secret) {
-        const shasum = crypto.createHmac('sha256', secret);
-        shasum.update(JSON.stringify(req.body));
-        const digest = shasum.digest('hex');
-        if (digest !== signature) {
-            console.error("Invalid Razorpay Signature");
-            return res.status(200).json({ invalid: true }); // Return 200 to stop retry loop
-        }
+    if (!secret) {
+        console.error("⚠️ RAZORPAY_WEBHOOK_SECRET is missing.");
+        return res.status(500).json({ error: "Server Configuration Error" });
+    }
+
+    // 1️⃣ Validate Signature
+    const shasum = crypto.createHmac('sha256', secret);
+    shasum.update(JSON.stringify(req.body));
+    const digest = shasum.digest('hex');
+
+    if (digest !== signature) {
+        console.error("⛔ Invalid Signature. Potential attack.");
+        return res.status(400).json({ error: "Invalid signature" });
     }
 
     const event = req.body;
-    
+
+    // 2️⃣ Process Payment
     if (event.event === 'payment.captured') {
         const payment = event.payload.payment.entity;
-        const uid = payment.notes?.uid;
-        
-        if (uid) {
-            console.log(`✅ Razorpay: Upgrading user ${uid} to PRO`);
-            await db.collection('users').doc(uid).set({
+        const notes = payment.notes || {};
+        const userId = notes.uid || notes.userId; // Support both naming conventions
+        const tier = notes.tier || 'PRO';
+
+        if (userId) {
+            console.log(`💰 Payment Captured: ${payment.id} for User: ${userId}`);
+
+            const limits = {
+                'PRO': { credits: 5000, limit: 5000 },
+                'BUSINESS': { credits: 20000, limit: 20000 }
+            };
+            const tierConfig = limits[tier as keyof typeof limits] || limits['PRO'];
+
+            // 3️⃣ Atomic Update (Revenue Critical)
+            await db.collection('users').doc(userId).set({
                 plan: {
-                    tier: 'PRO',
+                    tier: tier,
                     status: 'active',
                     provider: 'RAZORPAY',
-                    credits: 5000,
+                    credits: tierConfig.credits,
+                    monthlyLimit: tierConfig.limit,
+                    lastPaymentId: payment.id,
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                    autoRenew: true
-                }
+                    autoRenew: true,
+                    expiresAt: Date.now() + (30 * 24 * 60 * 60 * 1000) // +30 Days
+                },
+                // Sync legacy root fields for compatibility
+                tier: tier,
+                credits: tierConfig.credits,
+                monthlyLimit: tierConfig.limit,
+                
+                // Reset Usage Logic
+                usage: { workflows: 0, runs: 0, apiCalls: 0 },
+                lastUsageReset: Date.now()
             }, { merge: true });
 
+            // 4️⃣ Log Transaction
             await db.collection('payments').doc(payment.id).set({
                 id: payment.id,
-                userId: uid,
+                userId: userId,
                 gateway: 'RAZORPAY',
-                amount: payment.amount / 100, // Convert paise to INR
-                status: 'success',
+                amount: payment.amount / 100, // Convert paise to currency unit
+                currency: payment.currency,
+                status: 'SUCCESS',
+                method: payment.method,
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
+        } else {
+            console.warn("⚠️ Payment captured but no User ID in notes.");
         }
     }
 
-  } catch (err) {
-    console.error("Razorpay Webhook Error:", err);
-  }
+    res.status(200).json({ received: true });
 
-  return res.status(200).json({ received: true });
+  } catch (err: any) {
+    console.error("🔥 Webhook Handler Error:", err);
+    res.status(500).json({ error: "Internal Error" });
+  }
 }

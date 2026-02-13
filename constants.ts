@@ -362,16 +362,6 @@ export const NEXUS_DEFINITIONS: NexusDefinition[] = [
     defaultConfig: { dbQuery: 'SELECT * FROM users;' },
     requirements: { cost: 'FREE', signup: 'NONE', description: 'Connects to your DB.' }
   },
-  {
-    type: NexusType.ACTION,
-    subtype: NexusSubtype.MONGODB,
-    label: 'MongoDB',
-    icon: Database,
-    description: 'Query Mongo collections.',
-    category: 'Databases',
-    defaultConfig: { collection: 'users', operation: 'find' },
-    requirements: { cost: 'FREE', signup: 'NONE', description: 'Connects to your DB.' }
-  },
 
   // --- SHEETS / DOCS / CRMS ---
   {
