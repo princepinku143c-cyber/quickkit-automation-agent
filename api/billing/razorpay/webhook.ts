@@ -1,124 +1,125 @@
+import crypto from "crypto";
+import admin from "firebase-admin";
+import { Buffer } from "buffer";
 
-import * as admin from 'firebase-admin';
-import crypto from 'crypto';
-import { Buffer } from 'buffer';
-
-// --- 1. SAFE FIREBASE INIT ---
-// Prevents "Apps already exists" or "Undefined" errors
-if (!admin.apps.length) {
-    try {
-        const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+// --- 1. SAFE FIREBASE INIT (Vercel Compatible) ---
+// Checks if admin.apps exists AND has length to prevent undefined crashes
+if (!admin.apps || !admin.apps.length) {
+  try {
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+    if (privateKey) {
         admin.initializeApp({
             credential: admin.credential.cert({
-                projectId: process.env.FIREBASE_PROJECT_ID,
-                clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-                privateKey: privateKey ? privateKey.replace(/\\n/g, '\n') : undefined,
-            })
+              projectId: process.env.FIREBASE_PROJECT_ID,
+              clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+              privateKey: privateKey.replace(/\\n/g, "\n"),
+            }),
         });
-    } catch (e) {
-        console.error("Firebase Admin Init Error:", e);
     }
+  } catch (e) {
+      console.error("Firebase Admin Init Error:", e);
+  }
 }
 
-const db = admin.firestore();
-
 // --- 2. CONFIG: DISABLE BODY PARSER ---
-// Essential for Vercel/Next.js to verify webhook signatures
+// Essential: We need the raw stream to verify the signature
 export const config = {
   api: {
     bodyParser: false,
   },
 };
 
-// Helper: Read raw stream for HMAC verification
-async function getRawBody(readable: any): Promise<string> {
-  const chunks = [];
-  for await (const chunk of readable) {
-    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
-  }
-  return Buffer.concat(chunks).toString('utf8');
-}
-
 export default async function handler(req: any, res: any) {
-  // Health Check for Browser access (Prevents 500 crash on GET)
-  if (req.method !== 'POST') {
-      return res.status(200).json({ status: 'active', message: 'Razorpay Webhook Endpoint' });
-  }
-
   try {
-    const rawBody = await getRawBody(req);
-    const signature = req.headers['x-razorpay-signature'] as string;
+    // --- 3. BROWSER HEALTH CHECK ---
+    // Prevents "Function Invocation Failed" when opening in browser
+    if (req.method === "GET") {
+      return res.status(200).json({ status: "Webhook live", mode: "Vercel Node.js" });
+    }
+
+    if (req.method !== "POST") {
+      return res.status(405).json({ error: "Method not allowed" });
+    }
+
+    // --- 4. READ RAW BODY (BUFFER) ---
+    const buffers: any[] = [];
+    for await (const chunk of req) {
+      buffers.push(chunk);
+    }
+    const rawBody = Buffer.concat(buffers).toString();
+
+    // --- 5. VERIFY SIGNATURE ---
+    const signature = req.headers["x-razorpay-signature"] as string;
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
     if (!signature || !secret) {
-        console.error("⚠️ Webhook Config Missing: Signature or Secret");
-        return res.status(400).json({ error: "Configuration Error" });
+      console.error("Missing signature or secret");
+      return res.status(400).json({ error: "Configuration missing" });
     }
 
-    // --- 3. SECURITY: HMAC CHECK ---
-    const shasum = crypto.createHmac('sha256', secret);
-    shasum.update(rawBody);
-    const digest = shasum.digest('hex');
+    const expected = crypto
+      .createHmac("sha256", secret)
+      .update(rawBody)
+      .digest("hex");
 
-    if (digest !== signature) {
-        console.error("⛔ Invalid Webhook Signature");
-        return res.status(400).json({ error: "Invalid signature" });
+    if (expected !== signature) {
+      console.error("Signature Mismatch");
+      return res.status(400).json({ error: "Invalid signature" });
     }
 
-    // Parse verified body
+    // --- 6. PROCESS EVENT ---
     const event = JSON.parse(rawBody);
 
-    // --- 4. BUSINESS LOGIC ---
-    if (event.event === 'payment.captured') {
-        const payment = event.payload.payment.entity;
-        const notes = payment.notes || {};
-        const userId = notes.uid || notes.userId; 
-        
-        if (userId) {
-            console.log(`💰 Webhook: Payment ${payment.id} for User ${userId}`);
+    if (event.event === "payment.captured") {
+      const payment = event.payload.payment.entity;
+      // Extract userId from notes (sent via frontend)
+      const userId = payment.notes?.userId || payment.notes?.uid;
 
-            const tier = notes.tier || 'PRO';
-            const limits = {
-                'PRO': { credits: 5000, limit: 5000 },
-                'BUSINESS': { credits: 20000, limit: 20000 }
-            };
-            const config = limits[tier as keyof typeof limits] || limits['PRO'];
+      if (!userId) {
+        console.warn(`Payment ${payment.id} missing userId in notes`);
+        return res.status(400).json({ error: "No userId in notes" });
+      }
 
-            // Atomic Update
-            await db.collection('users').doc(userId).set({
-                plan: {
-                    tier: tier,
-                    status: 'active',
-                    provider: 'RAZORPAY',
-                    credits: config.credits,
-                    monthlyLimit: config.limit,
-                    lastPaymentId: payment.id,
-                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                    autoRenew: true,
-                    expiresAt: Date.now() + (30 * 24 * 60 * 60 * 1000) // +30 Days
-                },
-                tier: tier, // Sync legacy
-                credits: config.credits,
-                monthlyLimit: config.limit
-            }, { merge: true });
+      console.log(`✅ Upgrade User: ${userId}`);
 
-            // Log Payment
-            await db.collection('payments').doc(payment.id).set({
-                id: payment.id,
-                userId: userId,
-                gateway: 'RAZORPAY',
-                amount: payment.amount / 100,
-                currency: payment.currency,
-                status: 'SUCCESS',
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-        }
+      // Safe Atomic Update
+      await admin.firestore().collection("users").doc(userId).set(
+        {
+          plan: {
+            tier: "PRO",
+            status: "active",
+            provider: "RAZORPAY",
+            credits: 5000,
+            monthlyLimit: 5000,
+            lastPaymentId: payment.id,
+            expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 Days
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            autoRenew: true
+          },
+          // Sync root fields for legacy components
+          tier: "PRO",
+          credits: 5000
+        },
+        { merge: true }
+      );
+      
+      // Log Payment
+      await admin.firestore().collection("payments").doc(payment.id).set({
+          id: payment.id,
+          userId: userId,
+          amount: payment.amount / 100,
+          currency: payment.currency,
+          status: 'success',
+          gateway: 'RAZORPAY',
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
     }
 
     return res.status(200).json({ success: true });
 
-  } catch (err: any) {
-    console.error("🔥 Webhook Handler Error:", err);
-    return res.status(500).json({ error: "Internal Server Error" });
+  } catch (error: any) {
+    console.error("Webhook Crash:", error);
+    // Return 500 so Razorpay retries later
+    return res.status(500).json({ error: "Webhook crashed", details: error.message });
   }
 }

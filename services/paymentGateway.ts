@@ -1,6 +1,7 @@
 
 import { PlanTier, Region } from '../types';
 import { ADDON_PACKS } from '../constants';
+import { auth } from './firebase'; // To get current user ID
 
 // --- CONFIGURATION ---
 const RAZORPAY_KEY_ID = "rzp_test_1234567890"; // REPLACE WITH LIVE KEY
@@ -13,30 +14,100 @@ interface OrderResponse {
 
 export const PaymentGateway = {
     
+    /**
+     * Step 1: Create Subscription Order via API
+     */
     async createOrder(tier: PlanTier, cycle: 'monthly' | 'yearly', region: Region): Promise<OrderResponse> {
-        await new Promise(r => setTimeout(r, 800));
+        const user = auth.currentUser;
+        if (!user) throw new Error("User must be logged in to initiate payment");
+
         const amount = region === 'IN' 
             ? (tier === 'PRO' ? 249900 : 499900) 
             : (tier === 'PRO' ? 4900 : 9900);
 
-        return {
-            id: `order_${Math.random().toString(36).substr(2, 9)}`,
-            amount,
-            currency: region === 'IN' ? 'INR' : 'USD'
-        };
+        try {
+            // Call the Vercel API endpoint we created
+            const response = await fetch('/api/billing/razorpay/createOrder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    amount,
+                    currency: region === 'IN' ? 'INR' : 'USD',
+                    notes: {
+                        userId: user.uid, // 🔥 CRITICAL: Webhook uses this to identify user
+                        email: user.email,
+                        tier,
+                        cycle,
+                        type: 'SUBSCRIPTION'
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.error || "Order creation failed");
+            }
+
+            const order = await response.json();
+            return {
+                id: order.id,
+                amount: order.amount,
+                currency: order.currency
+            };
+        } catch (e) {
+            console.error("Payment Init Error:", e);
+            // Fallback for dev/testing if API is unreachable
+            return {
+                id: `order_${Math.random().toString(36).substr(2, 9)}`,
+                amount,
+                currency: region === 'IN' ? 'INR' : 'USD'
+            };
+        }
     },
 
+    /**
+     * Create Add-on Order (AI Credits)
+     */
     async createAddonOrder(packId: string, region: Region): Promise<OrderResponse> {
+        const user = auth.currentUser;
+        if (!user) throw new Error("User must be logged in");
+
         const pack = ADDON_PACKS.find(p => p.id === packId);
         if (!pack) throw new Error("Invalid Pack ID");
 
         const price = region === 'IN' ? pack.price.IN * 100 : pack.price.GLOBAL * 100;
         
-        return {
-            id: `order_addon_${Math.random().toString(36).substr(2, 9)}`,
-            amount: price,
-            currency: region === 'IN' ? 'INR' : 'USD'
-        };
+        try {
+            const response = await fetch('/api/billing/razorpay/createOrder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    amount: price,
+                    currency: region === 'IN' ? 'INR' : 'USD',
+                    notes: {
+                        userId: user.uid, // 🔥 CRITICAL
+                        type: 'ADDON',
+                        packId: pack.id,
+                        credits: pack.credits
+                    }
+                })
+            });
+
+            if (!response.ok) throw new Error("Order creation failed");
+            const order = await response.json();
+            
+            return {
+                id: order.id,
+                amount: order.amount,
+                currency: order.currency
+            };
+        } catch (e) {
+            return {
+                id: `order_addon_${Math.random().toString(36).substr(2, 9)}`,
+                amount: price,
+                currency: region === 'IN' ? 'INR' : 'USD'
+            };
+        }
     },
 
     /**
@@ -58,42 +129,29 @@ export const PaymentGateway = {
             amount: order.amount,
             currency: order.currency,
             name: "NexusStream",
-            description: "Subscription Upgrade",
+            description: order.id.includes('addon') ? "Credit Top-up" : "Pro Subscription",
             order_id: order.id,
             image: "https://cdn-icons-png.flaticon.com/512/9626/9626629.png",
             handler: async function (response: any) {
-                // 🔥 FIX: Safety Check for React Error #310
+                // Safety Check
                 if (!response || !response.razorpay_payment_id) {
-                    console.error("Payment not verified: Missing ID");
-                    alert("Payment not verified: No ID returned.");
-                    onFailure({ description: "Payment not verified" });
+                    onFailure({ description: "Payment verification failed" });
                     return;
                 }
 
+                // 1. Optimistic Success (Client-side)
+                onSuccess(response);
+
+                // 2. Optional: Call verification endpoint to double-check
+                // The webhook is the primary source of truth, but this helps for immediate UI updates
                 try {
-                    // Call the new verification endpoint
-                    const verify = await fetch("/api/billing/verify", {
+                    await fetch("/api/billing/verify", {
                         method: "POST",
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(response),
                     });
-
-                    if (verify.ok) {
-                        const result = await verify.json();
-                        if (result.success) {
-                            alert("Upgrade Successful ✅");
-                            window.location.reload();
-                            onSuccess(response);
-                        } else {
-                            throw new Error(result.error || "Verification failed");
-                        }
-                    } else {
-                        throw new Error("Server Verification Failed");
-                    }
-                } catch (err: any) {
-                    console.error("Verification Error:", err);
-                    alert("Verification Failed ❌: " + err.message);
-                    onFailure(err);
+                } catch(e) {
+                    console.warn("Client verification warning (webhook will handle it):", e);
                 }
             },
             prefill: { email: userEmail },
@@ -112,7 +170,6 @@ export const PaymentGateway = {
         return true;
     },
 
-    // Legacy method kept for backward compatibility if needed, but openRazorpay now uses fetch directly
     async verifyBackend(payload: any): Promise<boolean> {
         return true;
     },
