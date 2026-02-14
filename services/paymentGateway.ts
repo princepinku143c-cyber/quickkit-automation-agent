@@ -1,12 +1,11 @@
 
 import { PlanTier, Region } from '../types';
 import { ADDON_PACKS } from '../constants';
-import { functions } from './firebase'; // 🔥 Use real functions
+import { functions } from './firebase'; 
 
 // --- CONFIGURATION ---
 const RAZORPAY_KEY_ID = "rzp_test_1234567890"; // REPLACE WITH LIVE KEY
 
-// --- TYPES ---
 interface OrderResponse {
     id: string;
     amount: number;
@@ -15,17 +14,13 @@ interface OrderResponse {
 
 export const PaymentGateway = {
     
-    /**
-     * Step 1: Create Subscription Order
-     */
     async createOrder(tier: PlanTier, cycle: 'monthly' | 'yearly', region: Region): Promise<OrderResponse> {
-        // Mock Response
+        // Mock Response for Order Creation
         await new Promise(r => setTimeout(r, 800));
         const amount = region === 'IN' 
             ? (tier === 'PRO' ? 249900 : 499900) 
             : (tier === 'PRO' ? 4900 : 9900);
 
-        // Call backend: createOrder({ type: 'SUBSCRIPTION', tier, ... })
         return {
             id: `order_${Math.random().toString(36).substr(2, 9)}`,
             amount,
@@ -33,25 +28,16 @@ export const PaymentGateway = {
         };
     },
 
-    /**
-     * Create Add-on Order (AI Credits)
-     */
     async createAddonOrder(packId: string, region: Region): Promise<OrderResponse> {
         const pack = ADDON_PACKS.find(p => p.id === packId);
         if (!pack) throw new Error("Invalid Pack ID");
 
-        // Calculate Price
         const price = region === 'IN' ? pack.price.IN * 100 : pack.price.GLOBAL * 100;
-        const currency = region === 'IN' ? 'INR' : 'USD';
-
-        // MOCK BACKEND CALL
-        // await fetch('/api/createOrder', { body: { type: 'ADDON', packId, credits: pack.credits, amount, currency } })
         
-        await new Promise(r => setTimeout(r, 600));
         return {
             id: `order_addon_${Math.random().toString(36).substr(2, 9)}`,
             amount: price,
-            currency
+            currency: region === 'IN' ? 'INR' : 'USD'
         };
     },
 
@@ -74,19 +60,31 @@ export const PaymentGateway = {
             amount: order.amount,
             currency: order.currency,
             name: "NexusStream",
-            description: order.id.includes('addon') ? "Credit Top-up" : "Pro Subscription",
+            description: "Subscription Upgrade",
             order_id: order.id,
             image: "https://cdn-icons-png.flaticon.com/512/9626/9626629.png",
-            handler: function (response: any) {
-                onSuccess({
-                    paymentId: response.razorpay_payment_id,
-                    orderId: response.razorpay_order_id,
-                    signature: response.razorpay_signature
-                });
+            handler: async function (response: any) {
+                // 🔥 CRITICAL FIX: Safety Check for Undefined Response
+                if (!response || !response.razorpay_payment_id) {
+                    console.error("Payment Verification Failed: No Payment ID received.");
+                    onFailure({ description: "Payment not verified" });
+                    return;
+                }
+
+                // Client-side verification request
+                try {
+                    // In a real app, you might call your verification endpoint here
+                    // const verify = await fetch("/api/billing/verify", { ... });
+                    
+                    // For now, we pass the response to the success callback which handles the backend check
+                    onSuccess(response);
+                } catch (e) {
+                    onFailure(e);
+                }
             },
             prefill: { email: userEmail },
             theme: { color: "#00ff9d" },
-            modal: { ondismiss: () => onFailure("Checkout cancelled") }
+            modal: { ondismiss: () => onFailure({ description: "Checkout cancelled by user" }) }
         };
 
         const rzp = new (window as any).Razorpay(options);
@@ -94,22 +92,14 @@ export const PaymentGateway = {
         rzp.open();
     },
 
-    /**
-     * Request Refund
-     */
     async requestRefund(paymentId: string, reason: string): Promise<boolean> {
         console.log(`[Gateway] Requesting refund for ${paymentId}: ${reason}`);
-        // Call Backend: refundTransaction({ paymentId, reason })
         await new Promise(r => setTimeout(r, 1500));
         return true;
     },
 
-    /**
-     * Verify Payment on Backend (Secure)
-     */
     async verifyBackend(payload: any): Promise<boolean> {
-        if (!functions) return true; // Dev mode fallback
-        
+        if (!functions) return true;
         try {
             const verifyFn = functions.httpsCallable('verifyPayment');
             await verifyFn(payload);

@@ -8,12 +8,12 @@ export default async function handler(req: any, res: any) {
     }
 
     await sendMail(
-      process.env.EMAIL_USER, // Send to self
-      "NexusStream System Check ✅",
-      "<h1>System Operational</h1><p>Your email infrastructure is correctly configured and sending.</p>"
+      process.env.EMAIL_USER,
+      "Email Working ✅",
+      "<h1>Your email system is working.</h1>"
     );
 
-    res.status(200).json({ success: true, message: "Email sent successfully" });
+    res.status(200).json({ success: true });
   } catch (error: any) {
     console.error("Email Test Failed:", error);
     res.status(500).json({ success: false, error: error.message });
