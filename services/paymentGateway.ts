@@ -4,26 +4,8 @@ import { ADDON_PACKS } from '../constants';
 import { auth } from './firebase'; // To get current user ID
 
 // --- CONFIGURATION ---
-// Safe Environment Accessor
-const getEnv = (key: string) => {
-  try {
-    // @ts-ignore
-    if (typeof import.meta !== 'undefined' && import.meta.env) {
-      // @ts-ignore
-      return import.meta.env[key];
-    }
-  } catch (e) {}
-  
-  try {
-    if (typeof process !== 'undefined' && process.env) {
-      return process.env[key];
-    }
-  } catch (e) {}
-  
-  return undefined;
-};
-
-const RAZORPAY_KEY_ID = getEnv('VITE_RAZORPAY_KEY_ID') || "rzp_test_1234567890";
+// @ts-ignore
+const RAZORPAY_KEY_ID = (import.meta.env && import.meta.env.VITE_RAZORPAY_KEY_ID) || "rzp_test_1234567890";
 
 interface OrderResponse {
     id: string;
