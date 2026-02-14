@@ -4,7 +4,26 @@ import { ADDON_PACKS } from '../constants';
 import { auth } from './firebase'; // To get current user ID
 
 // --- CONFIGURATION ---
-const RAZORPAY_KEY_ID = "rzp_test_1234567890"; // REPLACE WITH LIVE KEY
+// Safe Environment Accessor
+const getEnv = (key: string) => {
+  try {
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      // @ts-ignore
+      return import.meta.env[key];
+    }
+  } catch (e) {}
+  
+  try {
+    if (typeof process !== 'undefined' && process.env) {
+      return process.env[key];
+    }
+  } catch (e) {}
+  
+  return undefined;
+};
+
+const RAZORPAY_KEY_ID = getEnv('VITE_RAZORPAY_KEY_ID') || "rzp_test_1234567890";
 
 interface OrderResponse {
     id: string;
@@ -18,6 +37,9 @@ export const PaymentGateway = {
      * Step 1: Create Subscription Order via API
      */
     async createOrder(tier: PlanTier, cycle: 'monthly' | 'yearly', region: Region): Promise<OrderResponse> {
+        console.log("CREATE ORDER TRIGGERED", { tier, cycle, region });
+        console.log("User Context:", auth.currentUser);
+
         const user = auth.currentUser;
         if (!user) throw new Error("User must be logged in to initiate payment");
 
@@ -69,6 +91,8 @@ export const PaymentGateway = {
      * Create Add-on Order (AI Credits)
      */
     async createAddonOrder(packId: string, region: Region): Promise<OrderResponse> {
+        console.log("CREATE ADDON TRIGGERED", { packId, region });
+
         const user = auth.currentUser;
         if (!user) throw new Error("User must be logged in");
 
@@ -133,6 +157,8 @@ export const PaymentGateway = {
             order_id: order.id,
             image: "https://cdn-icons-png.flaticon.com/512/9626/9626629.png",
             handler: async function (response: any) {
+                console.log("RAZORPAY SUCCESS", response);
+
                 // Safety Check
                 if (!response || !response.razorpay_payment_id) {
                     onFailure({ description: "Payment verification failed" });
