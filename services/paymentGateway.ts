@@ -5,7 +5,9 @@ import { auth } from './firebase'; // To get current user ID
 
 // --- CONFIGURATION ---
 // @ts-ignore
-const RAZORPAY_KEY_ID = (import.meta.env && import.meta.env.VITE_RAZORPAY_KEY_ID) || "rzp_test_1234567890";
+const env = import.meta.env || {};
+// @ts-ignore
+const RAZORPAY_KEY_ID = env.VITE_RAZORPAY_KEY_ID || "rzp_test_1234567890";
 
 interface OrderResponse {
     id: string;

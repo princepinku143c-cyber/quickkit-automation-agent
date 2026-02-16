@@ -235,7 +235,9 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade,
 
             // Using Vite environment variable as per user request
             // @ts-ignore
-            const clientID = import.meta.env.VITE_PAYPAL_CLIENT_ID;
+            const env = import.meta.env || {};
+            const clientID = env.VITE_PAYPAL_CLIENT_ID;
+            
             if (!clientID) {
                 console.error("VITE_PAYPAL_CLIENT_ID missing");
                 return Promise.reject("PayPal Client ID Not Found");
