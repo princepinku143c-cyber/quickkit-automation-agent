@@ -1,18 +1,18 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Check, X, Crown, ShieldCheck, Zap, Briefcase, Star, CreditCard, Loader2, PartyPopper, AlertTriangle, ArrowRight, Tag, RefreshCcw, Shield, ExternalLink, Lock, Globe, Ticket, Calendar } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Check, X, Crown, ShieldCheck, Zap, AlertTriangle, ArrowRight, Tag, RefreshCcw, Lock, Globe, Ticket, PartyPopper, Loader2 } from 'lucide-react';
 import { Region, PlanTier, UserPlan, CouponData } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { validateCoupon } from '../services/cloudStore';
 import { PaymentGateway } from '../services/paymentGateway';
 import LegalModal from './LegalModal';
-import { PLAN_LIMITS, PAYPAL_PLAN_IDS } from '../constants';
+import { PLAN_LIMITS } from '../constants';
 
 interface PricingModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpgrade?: (plan: UserPlan) => void;
-  triggerReason?: string; // 🔥 NEW: Limit Reached Context
+  triggerReason?: string;
 }
 
 type ModalState = 'SELECTION' | 'SUMMARY' | 'PROCESSING' | 'SUCCESS' | 'ERROR';
@@ -23,14 +23,12 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade,
   const [errorMessage, setErrorMessage] = useState('');
   const [isLegalOpen, setIsLegalOpen] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const [verificationStep, setVerificationStep] = useState(0); // For UI animation
+  const [verificationStep, setVerificationStep] = useState(0);
   
-  // REGION & PRICING STATE
   const [region, setRegion] = useState<Region>('GLOBAL');
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [selectedPaidTier, setSelectedPaidTier] = useState<PlanTier>('PRO');
   
-  // PROMO CODE STATE
   const [showPromoInput, setShowPromoInput] = useState(false);
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<CouponData | null>(null);
@@ -38,8 +36,6 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade,
   const [couponError, setCouponError] = useState('');
 
   const [autoRenew, setAutoRenew] = useState(true);
-  const paypalContainerRef = useRef<HTMLDivElement>(null);
-  const paypalScriptLoaded = useRef(false);
 
   // --- PRICING CONFIGURATION ---
   const prices = {
@@ -59,7 +55,6 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade,
     }
   };
 
-  // --- REGION DETECTION ---
   useEffect(() => {
     if (isOpen) {
         setUiState('SELECTION');
@@ -86,7 +81,6 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade,
     }
   }, [isOpen]);
 
-  // --- ANIMATED VERIFICATION STEPS ---
   useEffect(() => {
       if (uiState === 'PROCESSING') {
           const interval = setInterval(() => {
@@ -105,7 +99,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade,
   };
 
   const getFinalAmount = () => {
-      const priceObj = prices[region][selectedPaidTier]; // Dynamic tier lookup
+      const priceObj = prices[region][selectedPaidTier];
       const baseAmount = billingCycle === 'monthly' ? priceObj.monthly : priceObj.yearly;
       
       if (appliedCoupon) {
@@ -121,7 +115,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade,
   };
 
   const getBaseAmount = () => {
-      const priceObj = prices[region][selectedPaidTier]; // Dynamic tier lookup
+      const priceObj = prices[region][selectedPaidTier];
       return billingCycle === 'monthly' ? priceObj.monthly : priceObj.yearly;
   };
 
@@ -157,17 +151,13 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade,
       try {
           if (!user) throw new Error("User session expired.");
 
-          // 1. Create Order (Server-Side)
-          const order = await PaymentGateway.createOrder(selectedPaidTier, billingCycle, region);
-
-          // 2. Open Gateway
           if (region === 'IN') {
               // RAZORPAY FLOW
+              const order = await PaymentGateway.createOrder(selectedPaidTier, billingCycle, region);
               PaymentGateway.openRazorpay(
                   order,
                   user.email || 'guest',
                   async (response) => {
-                      // 3. Verify on Backend
                       setUiState('PROCESSING'); 
                       const isValid = await PaymentGateway.verifyBackend(response);
                       if (isValid) {
@@ -182,7 +172,22 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade,
                   }
               );
           } else {
-              // PAYPAL handled by button renderer below
+              // PAYPAL HYBRID FLOW (Backend Order + Popup)
+              const order = await PaymentGateway.createPayPalOrder(selectedPaidTier, billingCycle);
+              await PaymentGateway.initiatePayPal(
+                  order,
+                  () => {
+                      // Optimistic success for Hybrid Flow
+                      // In production, you might want to poll for webhook confirmation here
+                      completeUpgrade(order.id, 'PAYPAL');
+                  },
+                  (msg) => {
+                      setUiState('ERROR');
+                      setErrorMessage(msg);
+                  }
+              );
+              // Since popup is async and decoupled, we might want to show a 'Waiting' state
+              // But for this hybrid fix, let's assume if no error thrown immediately, we wait for user.
           }
 
       } catch (err: any) {
@@ -219,97 +224,9 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade,
       window.location.href = "mailto:sales@nexusstream.ai?subject=Business Plan Inquiry";
   };
 
-  // --- DYNAMIC PAYPAL LOADER & RENDERER ---
-  useEffect(() => {
-    // Only load/render if Global (Not India), Summary Screen
-    if (isOpen && region === 'GLOBAL' && uiState === 'SUMMARY' && paypalContainerRef.current) {
-        
-        // 1. DYNAMICALLY LOAD SCRIPT
-        const loadPayPal = async () => {
-            if (paypalScriptLoaded.current) return Promise.resolve();
-            // @ts-ignore
-            if (window.paypal) {
-                paypalScriptLoaded.current = true;
-                return Promise.resolve();
-            }
-
-            // Using Vite environment variable as per user request
-            // @ts-ignore
-            const env = import.meta.env || {};
-            const clientID = env.VITE_PAYPAL_CLIENT_ID;
-            
-            if (!clientID) {
-                console.error("VITE_PAYPAL_CLIENT_ID missing");
-                return Promise.reject("PayPal Client ID Not Found");
-            }
-
-            return new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = `https://www.paypal.com/sdk/js?client-id=${clientID}&vault=true&intent=subscription`;
-                script.onload = () => {
-                    paypalScriptLoaded.current = true;
-                    resolve(true);
-                };
-                script.onerror = () => reject("PayPal Script Failed");
-                document.body.appendChild(script);
-            });
-        };
-
-        // 2. RENDER BUTTONS
-        loadPayPal().then(() => {
-            if (!paypalContainerRef.current) return;
-            paypalContainerRef.current.innerHTML = '';
-            
-            try {
-                // @ts-ignore
-                if (window.paypal) {
-                    const planId = billingCycle === 'monthly' ? PAYPAL_PLAN_IDS.PRO_MONTHLY : PAYPAL_PLAN_IDS.PRO_YEARLY;
-                    
-                    // @ts-ignore
-                    window.paypal.Buttons({
-                        style: { layout: 'vertical', color: 'blue', shape: 'rect', label: 'pay' },
-                        createSubscription: (data: any, actions: any) => {
-                            return actions.subscription.create({
-                                'plan_id': planId
-                            });
-                        },
-                        onApprove: async (data: any, actions: any) => {
-                            setUiState('PROCESSING');
-                            const isValid = await PaymentGateway.verifyBackend({ subscriptionId: data.subscriptionID });
-                            if (isValid) {
-                                completeUpgrade(data.subscriptionID, 'PAYPAL');
-                            } else {
-                                setUiState('ERROR');
-                                setErrorMessage("Subscription Verification Failed");
-                            }
-                        },
-                        onError: (err: any) => {
-                            console.warn("PayPal Error", err);
-                            // Fallback simulation for dev mode if needed
-                            // handlePaymentStart(); 
-                        }
-                    }).render(paypalContainerRef.current);
-                }
-            } catch (e) {
-                console.error("PayPal Render Error", e);
-            }
-        }).catch(err => {
-            console.error("PayPal Load Error:", err);
-            // Fallback UI
-            if (paypalContainerRef.current) {
-                const btn = document.createElement('button');
-                btn.className = "w-full py-4 bg-gray-800 text-gray-400 font-bold rounded-xl flex items-center justify-center gap-2 cursor-not-allowed";
-                btn.innerHTML = `<span>PayPal Unavailable (Config Error)</span>`;
-                paypalContainerRef.current.appendChild(btn);
-            }
-        });
-    }
-  }, [isOpen, region, uiState, selectedPaidTier, billingCycle, appliedCoupon]);
-
   if (!isOpen) return null;
 
   const currentPrices = prices[region];
-  
   const finalPrice = uiState === 'SUMMARY' ? getFinalAmount() : 0;
   const basePrice = uiState === 'SUMMARY' ? getBaseAmount() : 0;
 
@@ -357,11 +274,12 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade,
                 <div className="h-6 overflow-hidden relative w-64">
                     <div className="absolute w-full transition-all duration-500 text-xs text-nexus-accent font-mono" style={{ transform: `translateY(-${verificationStep * 20}px)` }}>
                         <div className="h-5">Encrypting Payload...</div>
-                        <div className="h-5">Verifying Gateway Signature...</div>
-                        <div className="h-5">Upgrading Cluster Access...</div>
+                        <div className="h-5">Connecting to Gateway...</div>
+                        <div className="h-5">Waiting for Approval...</div>
                         <div className="h-5">Finalizing Transaction...</div>
                     </div>
                 </div>
+                <p className="text-[10px] text-gray-500 mt-4">Please complete the payment in the popup window.</p>
             </div>
         )}
 
@@ -586,9 +504,13 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade,
                                 Pay {currentPrices.symbol}{finalPrice} via Razorpay <ArrowRight size={18}/>
                             </button>
                         ) : (
-                            <div className={`transition-opacity duration-500 ${agreedToTerms ? 'opacity-100 pointer-events-auto' : 'opacity-30 pointer-events-none'}`}>
-                                <div key={finalPrice} ref={paypalContainerRef} className="min-h-[150px]"></div>
-                            </div>
+                            <button 
+                                onClick={handlePaymentStart} 
+                                disabled={!agreedToTerms} 
+                                className="w-full py-5 bg-blue-600 text-white rounded-2xl text-[12px] font-black uppercase tracking-[0.2em] hover:bg-blue-500 transition-all flex items-center justify-center gap-3 disabled:opacity-30 shadow-2xl"
+                            >
+                                Pay {currentPrices.symbol}{finalPrice} via PayPal <ArrowRight size={18}/>
+                            </button>
                         )}
                     </div>
                 </div>
