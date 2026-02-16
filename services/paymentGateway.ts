@@ -117,17 +117,30 @@ export const PaymentGateway = {
             return;
         }
 
-        // Polling for completion (Simple Strategy)
-        // In a real app, the popup would redirect to a specific success URL that communicates back via window.opener
+        // Listener for Success Signal from Popup
+        const handleMessage = (event: MessageEvent) => {
+            if (event.origin !== window.location.origin) return;
+            if (event.data?.type === 'NEXUS_PAYMENT_SUCCESS') {
+                cleanup();
+                onSuccess();
+            }
+        };
+
+        // Fallback: Check for closure (User cancelled)
         const timer = setInterval(() => {
             if (popup.closed) {
-                clearInterval(timer);
-                // We assume if closed, user might have finished. 
-                // Ideally, we'd listen for a postMessage or check backend status.
-                // For this hybrid flow, we'll optimistically trigger success or ask user to confirm.
-                console.log("PayPal popup closed.");
+                cleanup();
+                // If closed without success message, it's likely a cancel, 
+                // but we don't trigger failure immediately to avoid race conditions.
             }
         }, 1000);
+
+        const cleanup = () => {
+            window.removeEventListener('message', handleMessage);
+            clearInterval(timer);
+        };
+
+        window.addEventListener('message', handleMessage);
     },
 
     /**

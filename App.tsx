@@ -6,7 +6,7 @@ import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage'; 
 import { SettingsModal } from './components/SettingsModal';
 import { Nexus, Synapse, Project, ExecutionState, NexusType, NexusSubtype, PlanTier, UserPlan } from './types';
-import { Play, Cloud, ShieldCheck, Info, Activity, AlertCircle, CheckCircle2, Save, AlertTriangle, Lock, Loader2 } from 'lucide-react';
+import { Play, Cloud, ShieldCheck, Info, Activity, AlertCircle, CheckCircle2, Save, AlertTriangle, Lock, Loader2, PartyPopper } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { subscribeToProjects, updateProject, createProject, deleteProject } from './services/projectService';
 import { listPromos } from './services/adminService'; 
@@ -119,6 +119,19 @@ const AppContent: React.FC = () => {
   const [interruptedState, setInterruptedState] = useState<ExecutionState | null>(null);
   const lastSaveRef = useRef<number>(0);
 
+  // --- 0. POPUP HANDLER (PAYMENT SUCCESS) ---
+  useEffect(() => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('payment_success') === 'true') {
+          // If we are in a popup (have an opener)
+          if (window.opener) {
+              window.opener.postMessage({ type: 'NEXUS_PAYMENT_SUCCESS', status: 'success' }, window.location.origin);
+              // Small delay to allow message to send before closing
+              setTimeout(() => window.close(), 500);
+          }
+      }
+  }, []);
+
   // --- 1. AUTH & ROUTING SYNC ---
   useEffect(() => {
       if (user) {
@@ -182,6 +195,19 @@ const AppContent: React.FC = () => {
   }, []); // Run once
 
   // --- RENDER GATES ---
+  // If this is the payment success popup, show a minimal "Success" screen instead of the full app
+  if (new URLSearchParams(window.location.search).get('payment_success') === 'true') {
+      return (
+          <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-center p-8">
+              <div className="w-20 h-20 bg-nexus-success/20 rounded-full flex items-center justify-center mb-6 animate-bounce">
+                  <PartyPopper size={32} className="text-nexus-success" />
+              </div>
+              <h2 className="text-2xl font-black text-white uppercase tracking-widest">Payment Successful</h2>
+              <p className="text-gray-500 text-sm mt-2">Closing secure window...</p>
+          </div>
+      );
+  }
+
   if (!user && appRoute === 'landing') {
       return (
         <>
