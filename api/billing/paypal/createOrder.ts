@@ -3,6 +3,7 @@ import { Buffer } from 'buffer';
 
 const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
 const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET;
+const APP_BASE_URL = process.env.APP_BASE_URL;
 const PAYPAL_API = process.env.PAYPAL_ENV === 'live' 
     ? 'https://api-m.paypal.com' 
     : 'https://api-m.sandbox.paypal.com';
@@ -17,6 +18,16 @@ export default async function handler(req: any, res: any) {
 
     try {
         const { amount, currency, notes } = req.body;
+        const uid = notes?.userId;
+        const origin = APP_BASE_URL || req.headers.origin;
+
+        if (!uid) {
+            return res.status(400).json({ error: 'Missing notes.userId' });
+        }
+
+        if (!origin) {
+            return res.status(500).json({ error: 'Missing APP_BASE_URL/Origin for PayPal return URLs' });
+        }
 
         // 1. Get Access Token
         const auth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString('base64');
@@ -46,12 +57,13 @@ export default async function handler(req: any, res: any) {
                         currency_code: currency || 'USD',
                         value: (amount / 100).toFixed(2) // Convert cents to dollars if needed, assuming input is smallest unit
                     },
-                    custom_id: notes?.userId // Attach User ID for Webhook tracking
+                    custom_id: uid, // Attach User ID for Webhook tracking
+                    invoice_id: `NX-${uid}-${Date.now()}`
                 }],
                 application_context: {
                     user_action: 'PAY_NOW',
-                    return_url: `${req.headers.origin}/?payment_success=true`, // Simple return handling
-                    cancel_url: `${req.headers.origin}/?payment_cancel=true`
+                    return_url: `${origin}/?payment_success=true`, // Simple return handling
+                    cancel_url: `${origin}/?payment_cancel=true`
                 }
             })
         });

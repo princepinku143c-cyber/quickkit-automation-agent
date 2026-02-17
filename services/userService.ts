@@ -77,6 +77,28 @@ export const getUserProfile = async (uid: string): Promise<UserPlan | null> => {
 };
 
 /**
+ * Subscribe to realtime profile updates.
+ */
+export const subscribeToUserProfile = (
+    uid: string,
+    onData: (profile: UserPlan | null) => void,
+    onError?: (error: Error) => void
+) => {
+    if (!db) {
+        onData(null);
+        return () => {};
+    }
+
+    return db.collection(USERS_COLLECTION).doc(uid).onSnapshot(
+        (doc) => onData(doc.exists ? (doc.data() as UserPlan) : null),
+        (error) => {
+            console.error('Error subscribing to user profile:', error);
+            if (onError) onError(error as Error);
+        }
+    );
+};
+
+/**
  * Update specific fields in the user profile (e.g. completing onboarding).
  */
 export const updateUserProfile = async (uid: string, updates: Partial<UserPlan>) => {

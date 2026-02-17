@@ -9,6 +9,18 @@ export default defineConfig(({ mode }) => {
         port: 3000,
         host: '0.0.0.0',
       },
+      build: {
+        chunkSizeWarningLimit: 900,
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              react: ['react', 'react-dom'],
+              firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
+              icons: ['lucide-react'],
+            },
+          },
+        },
+      },
       plugins: [react()],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),

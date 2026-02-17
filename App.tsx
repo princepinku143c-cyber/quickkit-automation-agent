@@ -10,7 +10,7 @@ import { Play, Cloud, ShieldCheck, Info, Activity, AlertCircle, CheckCircle2, Sa
 import { useAuth } from './context/AuthContext';
 import { subscribeToProjects, updateProject, createProject, deleteProject } from './services/projectService';
 import { listPromos } from './services/adminService'; 
-import { getUserProfile, updateUserProfile, debugPromoteUser } from './services/userService'; 
+import { subscribeToUserProfile, updateUserProfile, debugPromoteUser } from './services/userService'; 
 import { canAddNode } from './services/usageGuard'; 
 import { DEFAULT_NODE_SETTINGS, PLAN_LIMITS } from './constants';
 
@@ -136,20 +136,22 @@ const AppContent: React.FC = () => {
   useEffect(() => {
       if (user) {
           setAppRoute('app');
-          // Fetch Real Profile from Firestore
-          getUserProfile(user.uid).then((profile) => {
+          const unsubscribeProfile = subscribeToUserProfile(user.uid, (profile) => {
               if (profile) {
                   setFullPlan(profile);
-                  setUserPlan(profile.tier);
-                  
-                  // Handle Onboarding based on DB flag
+                  setUserPlan(profile.tier || profile.plan?.tier || 'FREE');
+
                   if (!profile.onboardingDone) {
                       setIsOnboardingOpen(true);
                   }
               }
           });
           listPromos(); 
+
+          return () => unsubscribeProfile();
       } else {
+          setFullPlan(null);
+          setUserPlan('FREE');
           if (appRoute === 'app') setAppRoute('landing');
       }
   }, [user]);
