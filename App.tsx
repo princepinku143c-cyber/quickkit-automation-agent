@@ -12,7 +12,7 @@ import { subscribeToProjects, updateProject, createProject, deleteProject } from
 import { listPromos } from './services/adminService'; 
 import { subscribeToUserProfile, updateUserProfile, debugPromoteUser } from './services/userService'; 
 import { canAddNode } from './services/usageGuard'; 
-import { DEFAULT_NODE_SETTINGS, PLAN_LIMITS } from './constants';
+import { DEFAULT_NODE_SETTINGS, NEXUS_DEFINITIONS, PLAN_LIMITS } from './constants';
 
 // --- LAZY LOADED COMPONENTS (Performance Optimization) ---
 const Canvas = React.lazy(() => import('./components/Canvas'));
@@ -81,6 +81,14 @@ const LoadingSpinner = () => (
         <Loader2 className="animate-spin text-nexus-accent" size={32} />
     </div>
 );
+
+const deepClone = <T,>(value: T): T => {
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
+};
 
 const AppContent: React.FC = () => {
   const { user } = useAuth();
@@ -382,6 +390,10 @@ const AppContent: React.FC = () => {
           return;
       }
 
+      const definition = NEXUS_DEFINITIONS.find(d => d.subtype === subtype);
+      const nodeLabel = definition?.label || `New ${subtype}`;
+      const defaultConfig = deepClone(definition?.defaultConfig || {});
+
       const id = `n-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
       setNexuses(prev => {
           let safeX = 100;
@@ -392,14 +404,14 @@ const AppContent: React.FC = () => {
               if (Number.isFinite(max)) safeX = max + 300;
           }
           const newNode: Nexus = { 
-              id, type, subtype, label: `New ${subtype}`, 
-              position: { x: safeX, y: safeY }, config: {}, settings: DEFAULT_NODE_SETTINGS, status: 'idle' 
+              id, type, subtype, label: nodeLabel,
+              position: { x: safeX, y: safeY }, config: defaultConfig, settings: DEFAULT_NODE_SETTINGS, status: 'idle' 
           };
           return [...prev, newNode];
       });
       setSelectedId(id);
       setIsPropertiesOpen(true);
-  }, [nexuses.length, fullPlan, userPlan, selectedId]);
+  }, [nexuses.length, fullPlan, userPlan]);
 
   const handleApplyStream = (newNexuses: Nexus[], newSynapses: Synapse[]) => {
       const cleanNodes = sanitizeNodes(newNexuses).map((n, i) => {

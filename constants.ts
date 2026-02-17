@@ -35,7 +35,7 @@ export const AI_MODELS = {
 // --- PLAN LIMITS (CONVERSION ENGINE) ---
 export const PLAN_LIMITS = {
   FREE: {
-    PROJECTS: 3,      // Workflows
+    PROJECTS: 2,      // Workflows
     RUNS: 100,        // Executions per month
     API_CALLS: 5,     // 5 AI Prompts
     MAX_NODES: 10,
