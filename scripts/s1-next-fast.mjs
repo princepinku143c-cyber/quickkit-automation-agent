@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import process from 'node:process';
 
 const args = process.argv.slice(2);
 const hasFlag = (name) => args.includes(`--${name}`);

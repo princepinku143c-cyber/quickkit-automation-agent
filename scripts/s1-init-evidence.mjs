@@ -2,6 +2,7 @@
 
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import process from 'node:process';
 
 const args = process.argv.slice(2);
 const getArg = (name) => {
