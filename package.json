@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "ops:s1:check": "node scripts/s1-live-check.mjs",
+    "ops:s1:evidence:init": "node scripts/s1-init-evidence.mjs",
+    "ops:s1:next-fast": "node scripts/s1-next-fast.mjs"
   },
   "dependencies": {
     "react": "^19.2.3",

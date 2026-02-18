@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, X, Terminal, ShieldCheck, AlertTriangle, Loader2, CheckCircle2, Zap, Brain, TrendingUp, Sparkles, Wand2, Activity, Server, Cloud, CloudLightning, RotateCcw, AlertCircle, Info } from 'lucide-react';
 import { Nexus, Synapse, ExecutionState, NexusType, FlowWarning } from '../types';
+import { getConnectorValidationErrors } from '../constants';
 import { WorkflowOrchestrator, ExecutionResult } from '../services/executionEngine';
 import { createCloudRun, subscribeToRun } from '../services/cloudStore';
 import { useAuth } from '../context/AuthContext';
@@ -30,6 +31,49 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
   const [isHealing, setIsHealing] = useState(false);
   
   const scrollRef = useRef<HTMLDivElement>(null);
+  const cloudTimeoutRef = useRef<any>(null);
+  const cloudUnsubRef = useRef<null | (() => void)>(null);
+  const isMountedRef = useRef(true);
+  const activeRunIdRef = useRef<string | null>(null);
+
+  const appendLog = (entry: { msg: string; type: string; nodeId?: string }) => {
+      if (!isMountedRef.current) return;
+      setLogs(prev => [...prev, entry]);
+  };
+
+  const cleanupCloudRun = (options?: { resetRunning?: boolean; resetMode?: boolean; resetRunId?: boolean }) => {
+      const {
+          resetRunning = false,
+          resetMode = false,
+          resetRunId = true
+      } = options || {};
+
+      if (cloudTimeoutRef.current) {
+          clearTimeout(cloudTimeoutRef.current);
+          cloudTimeoutRef.current = null;
+      }
+      if (cloudUnsubRef.current) {
+          cloudUnsubRef.current();
+          cloudUnsubRef.current = null;
+      }
+      if (resetRunId) {
+          activeRunIdRef.current = null;
+      }
+      if (resetRunning && isMountedRef.current) {
+          setActiveRunning(false);
+      }
+      if (resetMode && isMountedRef.current) {
+          setIsCloudRun(false);
+      }
+  };
+
+  useEffect(() => {
+      isMountedRef.current = true;
+      return () => {
+          isMountedRef.current = false;
+          cleanupCloudRun({ resetRunId: true });
+      };
+  }, []);
 
   useEffect(() => {
       if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -41,26 +85,46 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
           
           // PERFORM HEALTH CHECK
           const health = engine.validate();
-          setWarnings(health.warnings);
-          setIsBlocked(!health.valid);
+          const connectorWarnings: FlowWarning[] = nexuses.flatMap((node) =>
+            getConnectorValidationErrors(node.subtype, node.config || {}).map((message) => ({
+              level: 'ERROR' as const,
+              message,
+              nodeId: node.id,
+            }))
+          );
+          const combinedWarnings = [...health.warnings, ...connectorWarnings];
+          setWarnings(combinedWarnings);
+          setIsBlocked(!health.valid || connectorWarnings.length > 0);
           
-          if (resumeState) {
+          if (resumeState && health.valid) {
               setLogs([{ msg: `Resuming execution ${resumeState.runId}...`, type: 'INFO' }]);
-              handleLocalStart(resumeState);
+              handleLocalStart(resumeState, true);
+          } else if (resumeState && !health.valid) {
+              setLogs([{ msg: 'Resume blocked: fix validation errors before continuing.', type: 'ERROR' }]);
           } else {
               setLogs([]);
               setFinalResult(null);
               setIsCloudRun(false);
           }
       }
+
+      return () => cleanupCloudRun({ resetRunning: true, resetMode: true, resetRunId: true });
   }, [isOpen, nexuses, synapses, resumeState]);
 
-  const handleLocalStart = async (stateToResume?: ExecutionState) => {
-      if (isBlocked) return;
+  const handleLocalStart = async (stateToResume?: ExecutionState, forceResume: boolean = false) => {
+      if (activeRunning) {
+          appendLog({ msg: 'Run already in progress. Please wait for completion.', type: 'INFO' });
+          return;
+      }
+      if (isBlocked && !forceResume) {
+          appendLog({ msg: 'Run blocked: resolve workflow validation errors first.', type: 'ERROR' });
+          return;
+      }
       setLogs(prev => stateToResume ? prev : []); 
       setFinalResult(null);
       setActiveRunning(true);
       setIsCloudRun(false);
+      cleanupCloudRun({ resetRunId: true });
       
       let payload = {};
       try { payload = JSON.parse(jsonInput); } catch(e) {
@@ -72,36 +136,59 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
       }
 
       if (!stateToResume) {
-        setLogs(prev => [...prev, { msg: "Initializing Local Browser Runtime...", type: 'INFO' }]);
+          appendLog({ msg: "Initializing Local Browser Runtime...", type: 'INFO' });
       }
 
       const engine = new WorkflowOrchestrator(
           nexuses, 
           synapses, 
-          (msg, type, nodeId) => setLogs(prev => [...prev, { msg, type, nodeId }]), 
+          (msg, type, nodeId) => appendLog({ msg, type, nodeId }), 
           undefined, 
           user?.uid || 'guest',
           'test-project',
           stateToResume || undefined
       );
       
-      const result = await engine.start(payload);
-      setFinalResult(result);
-      setActiveRunning(false);
+      try {
+          const result = await engine.start(payload);
+          if (isMountedRef.current) {
+              setFinalResult(result);
+          }
+      } catch (e: any) {
+          appendLog({ msg: `Runtime failed: ${e.message || 'Unknown error'}`, type: 'ERROR' });
+      } finally {
+          if (isMountedRef.current) {
+              setActiveRunning(false);
+          }
+      }
   };
 
   const handleCloudStart = async () => {
-      if (isBlocked) return;
+      if (activeRunning) {
+          appendLog({ msg: 'Run already in progress. Please wait for completion.', type: 'INFO' });
+          return;
+      }
+      if (isBlocked) {
+          appendLog({ msg: 'Cloud run blocked: resolve workflow validation errors first.', type: 'ERROR' });
+          return;
+      }
+
+      let payload = {};
+      try {
+          payload = JSON.parse(jsonInput);
+      } catch(e) {
+          setLogs([{ msg: "CRITICAL: Payload JSON is malformed.", type: 'ERROR' }]);
+          return;
+      }
+
       setLogs([]);
       setFinalResult(null);
       setActiveRunning(true);
       setIsCloudRun(true);
 
-      let payload = {};
-      try { payload = JSON.parse(jsonInput); } catch(e) { return; }
-
       const runId = `CLOUD-TEST-${Date.now()}`;
-      setLogs(prev => [...prev, { msg: `Dispatching Job ${runId} to Cloud Cluster...`, type: 'INFO' }]);
+      activeRunIdRef.current = runId;
+      appendLog({ msg: `Dispatching Job ${runId} to Cloud Cluster...`, type: 'INFO' });
 
       const triggerNode = nexuses.find(n => n.type === NexusType.TRIGGER);
       const initialState: ExecutionState = {
@@ -118,36 +205,63 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
       };
 
       try {
+          cleanupCloudRun({ resetRunId: false });
+
           await createCloudRun(initialState);
-          setLogs(prev => [...prev, { msg: "Waiting for Worker Response...", type: 'INFO' }]);
+          appendLog({ msg: "Waiting for Worker Response...", type: 'INFO' });
+
+          let finished = false;
+          let timeoutId: any = null;
 
           const unsubscribe = subscribeToRun(runId, (updatedState) => {
+              if (activeRunIdRef.current !== runId) {
+                  return;
+              }
+
               if (updatedState.status === 'COMPLETED') {
-                  setLogs(prev => [...prev, { msg: "Execution finished successfully.", type: 'SUCCESS' }]);
-                  setFinalResult({
-                      status: 'SUCCESS',
-                      executionId: runId,
-                      duration: Date.now() - initialState.startTime,
-                      output: updatedState.context,
-                      logs: [],
-                      telemetry: []
-                  });
-                  setActiveRunning(false);
-                  unsubscribe();
+                  finished = true;
+                  cleanupCloudRun({ resetRunning: true, resetMode: false, resetRunId: true });
+                  appendLog({ msg: "Execution finished successfully.", type: 'SUCCESS' });
+                  if (isMountedRef.current) {
+                      setFinalResult({
+                          status: 'SUCCESS',
+                          executionId: runId,
+                          duration: Date.now() - initialState.startTime,
+                          output: updatedState.context,
+                          logs: [],
+                          telemetry: []
+                      });
+                  }
+              } else if (updatedState.status === 'FAILED') {
+                  finished = true;
+                  cleanupCloudRun({ resetRunning: true, resetMode: false, resetRunId: true });
+                  appendLog({ msg: `Cloud run ${updatedState.status.toLowerCase()}.`, type: 'ERROR' });
+                  if (isMountedRef.current) {
+                      setFinalResult({
+                          status: 'FAILED',
+                          executionId: runId,
+                          duration: Date.now() - initialState.startTime,
+                          output: updatedState.context,
+                          logs: [],
+                          telemetry: []
+                      });
+                  }
               }
           });
 
-          setTimeout(() => {
-              if (activeRunning) {
-                  setLogs(prev => [...prev, { msg: "Cloud Timeout.", type: 'ERROR' }]);
-                  setActiveRunning(false);
-                  unsubscribe();
+          cloudUnsubRef.current = unsubscribe;
+
+          timeoutId = setTimeout(() => {
+              if (!finished && activeRunIdRef.current === runId) {
+                  appendLog({ msg: "Cloud Timeout.", type: 'ERROR' });
+                  cleanupCloudRun({ resetRunning: true, resetMode: false, resetRunId: true });
               }
           }, 30000);
+          cloudTimeoutRef.current = timeoutId;
 
       } catch (e: any) {
-          setLogs(prev => [...prev, { msg: `Dispatch Failed: ${e.message}`, type: 'ERROR' }]);
-          setActiveRunning(false);
+          appendLog({ msg: `Dispatch Failed: ${e.message}`, type: 'ERROR' });
+          cleanupCloudRun({ resetRunning: true, resetMode: false, resetRunId: true });
       }
   };
 
