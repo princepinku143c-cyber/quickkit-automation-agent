@@ -20,9 +20,19 @@ export default async function handler(req: any, res: any) {
         const { amount, currency, notes } = req.body;
         const uid = notes?.userId;
         const origin = APP_BASE_URL || req.headers.origin;
+        const normalizedAmount = Number(amount);
+        const normalizedCurrency = (currency || 'USD').toUpperCase();
 
         if (!uid) {
             return res.status(400).json({ error: 'Missing notes.userId' });
+        }
+
+        if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+            return res.status(400).json({ error: 'Invalid amount' });
+        }
+
+        if (!/^[A-Z]{3}$/.test(normalizedCurrency)) {
+            return res.status(400).json({ error: 'Invalid currency code' });
         }
 
         if (!origin) {
@@ -54,8 +64,8 @@ export default async function handler(req: any, res: any) {
                 intent: 'CAPTURE',
                 purchase_units: [{
                     amount: {
-                        currency_code: currency || 'USD',
-                        value: (amount / 100).toFixed(2) // Convert cents to dollars if needed, assuming input is smallest unit
+                        currency_code: normalizedCurrency,
+                        value: (normalizedAmount / 100).toFixed(2) // Convert cents to dollars if needed, assuming input is smallest unit
                     },
                     custom_id: uid, // Attach User ID for Webhook tracking
                     invoice_id: `NX-${uid}-${Date.now()}`
@@ -73,10 +83,13 @@ export default async function handler(req: any, res: any) {
 
         // 3. Extract Approval Link
         const approvalLink = orderData.links.find((l: any) => l.rel === 'approve');
+        if (!approvalLink?.href) {
+            throw new Error('PayPal approval URL missing from create order response');
+        }
 
         return res.status(200).json({
             id: orderData.id,
-            approvalUrl: approvalLink?.href
+            approvalUrl: approvalLink.href
         });
 
     } catch (error: any) {

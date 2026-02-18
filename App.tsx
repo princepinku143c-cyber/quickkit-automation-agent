@@ -12,7 +12,7 @@ import { subscribeToProjects, updateProject, createProject, deleteProject } from
 import { listPromos } from './services/adminService'; 
 import { subscribeToUserProfile, updateUserProfile, debugPromoteUser } from './services/userService'; 
 import { canAddNode } from './services/usageGuard'; 
-import { DEFAULT_NODE_SETTINGS, NEXUS_DEFINITIONS, PLAN_LIMITS } from './constants';
+import { DEFAULT_NODE_SETTINGS, NEXUS_DEFINITIONS, PLAN_LIMITS, getDefaultNodeSettings } from './constants';
 
 // --- LAZY LOADED COMPONENTS (Performance Optimization) ---
 const Canvas = React.lazy(() => import('./components/Canvas'));
@@ -51,7 +51,7 @@ const sanitizeNodes = (nodes: any[]): Nexus[] => {
             label: n.label || 'Untitled Node',
             position: { x: posX, y: posY },
             config: n.config || {},
-            settings: n.settings || DEFAULT_NODE_SETTINGS,
+            settings: { ...getDefaultNodeSettings(n.subtype || NexusSubtype.NO_OP), ...(n.settings || {}) },
             status: 'idle' as const
         };
     }).filter(n => n);
@@ -405,7 +405,7 @@ const AppContent: React.FC = () => {
           }
           const newNode: Nexus = { 
               id, type, subtype, label: nodeLabel,
-              position: { x: safeX, y: safeY }, config: defaultConfig, settings: DEFAULT_NODE_SETTINGS, status: 'idle' 
+              position: { x: safeX, y: safeY }, config: defaultConfig, settings: getDefaultNodeSettings(subtype), status: 'idle' 
           };
           return [...prev, newNode];
       });

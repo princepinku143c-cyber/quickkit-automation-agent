@@ -10,6 +10,10 @@ const PAYPAL_API = process.env.PAYPAL_ENV === 'live'
   ? 'https://api-m.paypal.com'
   : 'https://api-m.sandbox.paypal.com';
 
+const LOG_PREFIX = '[PAYPAL_WEBHOOK]';
+
+let isFirebaseReady = false;
+
 if (!admin.apps.length) {
   try {
     const privateKey = process.env.FIREBASE_PRIVATE_KEY;
@@ -21,16 +25,26 @@ if (!admin.apps.length) {
           privateKey: privateKey.replace(/\\n/g, '\n'),
         })
       });
-      console.log('🔥 Firebase Admin Initialized');
+      isFirebaseReady = true;
+      console.log(`${LOG_PREFIX} Firebase Admin initialized.`);
     } else {
-      console.warn('⚠️ FIREBASE_PRIVATE_KEY is missing. Database operations will fail.');
+      console.warn(`${LOG_PREFIX} FIREBASE_PRIVATE_KEY missing. Database operations unavailable.`);
     }
   } catch (e) {
-    console.error('🔥 Firebase Init Failed:', e);
+    console.error(`${LOG_PREFIX} Firebase init failed:`, e);
   }
+} else {
+  isFirebaseReady = true;
 }
 
-const db = admin.firestore();
+const getDb = () => {
+  if (!isFirebaseReady) return null;
+  try {
+    return admin.firestore();
+  } catch {
+    return null;
+  }
+};
 
 export const config = {
   api: {
@@ -61,7 +75,7 @@ const getAccessToken = async (): Promise<string> => {
   return tokenData.access_token;
 };
 
-const verifyWebhookSignature = async (req: any, rawBody: string): Promise<boolean> => {
+const verifyWebhookSignature = async (req: any, webhookEvent: any): Promise<boolean> => {
   if (!PAYPAL_WEBHOOK_ID) {
     if (NODE_ENV === 'production') {
       throw new Error('PAYPAL_WEBHOOK_ID missing in production.');
@@ -84,7 +98,7 @@ const verifyWebhookSignature = async (req: any, rawBody: string): Promise<boolea
       transmission_sig: req.headers['paypal-transmission-sig'],
       transmission_time: req.headers['paypal-transmission-time'],
       webhook_id: PAYPAL_WEBHOOK_ID,
-      webhook_event: JSON.parse(rawBody),
+      webhook_event: webhookEvent,
     }),
   });
 
@@ -121,7 +135,7 @@ const resolveUid = async (resource: any, eventType: string): Promise<string | nu
 
 export default async function handler(req: any, res: any) {
   if (req.method === 'GET') {
-    return res.status(200).json({ ok: true, status: 'PayPal Webhook Live' });
+    return res.status(200).json({ ok: true, status: 'PayPal Webhook Live', firebaseReady: !!getDb(), env: process.env.PAYPAL_ENV || 'sandbox' });
   }
 
   if (req.method !== 'POST') {
@@ -129,23 +143,50 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
+    const db = getDb();
+    if (!db) {
+      return res.status(503).json({ error: 'Billing store unavailable' });
+    }
+
     const buffers: any[] = [];
     for await (const chunk of req) {
       buffers.push(chunk);
     }
     const rawBody = Buffer.concat(buffers).toString('utf8');
-    const body = JSON.parse(rawBody);
+    let body: any;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return res.status(400).json({ error: 'Invalid JSON payload' });
+    }
 
-    const valid = await verifyWebhookSignature(req, rawBody);
+    const requiredHeaders = [
+      'paypal-auth-algo',
+      'paypal-cert-url',
+      'paypal-transmission-id',
+      'paypal-transmission-sig',
+      'paypal-transmission-time',
+    ];
+
+    const missingHeader = requiredHeaders.find((header) => !req.headers?.[header]);
+    if (missingHeader) {
+      return res.status(400).json({ error: `Missing PayPal signature header: ${missingHeader}` });
+    }
+
+    if (!body?.event_type) {
+      return res.status(400).json({ error: 'Missing event_type' });
+    }
+
+    const valid = await verifyWebhookSignature(req, body);
     if (!valid) {
-      console.error('❌ Invalid PayPal webhook signature.');
+      console.error(`${LOG_PREFIX} Invalid webhook signature.`);
       return res.status(400).json({ error: 'Invalid signature' });
     }
 
     const eventType = body.event_type;
     const resource = body.resource || {};
 
-    console.log(`🔔 PayPal Event: ${eventType} | ID: ${resource?.id || body?.id}`);
+    console.log(`${LOG_PREFIX} Event=${eventType} EventId=${body?.id || 'N/A'} ResourceId=${resource?.id || 'N/A'}`);
 
     // Upgrade only on terminal/confirmed events to avoid premature plan activation.
     if (
@@ -155,62 +196,90 @@ export default async function handler(req: any, res: any) {
       const uid = await resolveUid(resource, eventType);
 
       if (!uid) {
-        console.warn(`⚠️ PayPal event ${eventType} missing uid/custom_id. Resource ID: ${resource?.id || 'N/A'}`);
+        console.warn(`${LOG_PREFIX} Missing uid/custom_id for Event=${eventType} ResourceId=${resource?.id || 'N/A'}`);
         return res.status(200).json({ received: true, skipped: 'missing_uid' });
       }
 
       const paymentId = resource.id || body.id;
+      const eventId = body.id;
       const amount = Number(resource.amount?.value || resource.amount?.total || 0);
       const currency = resource.amount?.currency_code || resource.amount?.currency || 'USD';
 
-      if (paymentId) {
-        const existingPayment = await db.collection('payments').doc(paymentId).get();
-        if (existingPayment.exists && existingPayment.data()?.status === 'success') {
-          console.log(`ℹ️ PayPal event already processed for payment ${paymentId}.`);
-          return res.status(200).json({ received: true, duplicate: true });
-        }
-      }
+      const eventDocRef = eventId ? db.collection('payments').doc(`evt_${eventId}`) : null;
+      const paymentDocRef = paymentId ? db.collection('payments').doc(paymentId) : null;
+      const userDocRef = db.collection('users').doc(uid);
 
-      await db.collection('users').doc(uid).set({
-        plan: {
+      const alreadyProcessed = await db.runTransaction(async (tx) => {
+        if (eventDocRef) {
+          const eventSnap = await tx.get(eventDocRef);
+          if (eventSnap.exists) return true;
+        }
+
+        if (paymentDocRef) {
+          const paymentSnap = await tx.get(paymentDocRef);
+          if (paymentSnap.exists && paymentSnap.data()?.status === 'success') return true;
+        }
+
+        tx.set(userDocRef, {
+          plan: {
+            tier: 'PRO',
+            status: 'active',
+            provider: 'PAYPAL',
+            credits: 5000,
+            monthlyLimit: 5000,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            autoRenew: true,
+          },
           tier: 'PRO',
           status: 'active',
           provider: 'PAYPAL',
           credits: 5000,
           monthlyLimit: 5000,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           autoRenew: true,
-        },
-        tier: 'PRO',
-        status: 'active',
-        provider: 'PAYPAL',
-        credits: 5000,
-        monthlyLimit: 5000,
-        autoRenew: true,
-        lastPaymentId: paymentId,
-        updatedAt: Date.now(),
-        expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
-      }, { merge: true });
-
-      if (paymentId) {
-        await db.collection('payments').doc(paymentId).set({
-          id: paymentId,
-          userId: uid,
-          gateway: 'PAYPAL',
-          amount,
-          currency,
-          status: 'success',
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          rawEventType: eventType,
+          lastPaymentId: paymentId,
+          updatedAt: Date.now(),
+          expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
         }, { merge: true });
+
+        if (paymentDocRef) {
+          tx.set(paymentDocRef, {
+            id: paymentId,
+            userId: uid,
+            gateway: 'PAYPAL',
+            amount,
+            currency,
+            status: 'success',
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            rawEventType: eventType,
+          }, { merge: true });
+        }
+
+        if (eventDocRef) {
+          tx.set(eventDocRef, {
+            id: `evt_${eventId}`,
+            userId: uid,
+            gateway: 'PAYPAL',
+            status: 'processed',
+            eventId,
+            eventType,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }
+
+        return false;
+      });
+
+      if (alreadyProcessed) {
+        console.log(`${LOG_PREFIX} Duplicate skipped EventId=${eventId || 'N/A'} PaymentId=${paymentId || 'N/A'}`);
+        return res.status(200).json({ received: true, duplicate: true });
       }
 
-      console.log(`✅ PayPal: upgraded user ${uid} via ${eventType}`);
+      console.log(`${LOG_PREFIX} Upgrade success User=${uid} Event=${eventType} PaymentId=${paymentId || 'N/A'}`);
     }
 
     return res.status(200).json({ received: true });
   } catch (error: any) {
-    console.error('🔥 PayPal Webhook Error:', error);
+    console.error(`${LOG_PREFIX} Handler error:`, error);
     return res.status(500).json({ error: error.message || 'Internal Error' });
   }
 }

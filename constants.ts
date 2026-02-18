@@ -1,5 +1,5 @@
 
-import { NexusSubtype, NexusType, NexusDefinition, NodeSettings, AddOnPack } from "./types";
+import { NexusSubtype, NexusType, NexusDefinition, NodeSettings, AddOnPack, NexusConfig } from "./types";
 import { 
   Zap, Clock, Globe, Brain, 
   Pause, Split, Terminal, Mail,
@@ -18,7 +18,6 @@ import {
 export const RECAPTCHA_SITE_KEY = "6Lc6SDcsAAAAAOsn_zVFCI2vzlIKLB9AdLCtF5cD";
 
 // 🔥 PAYPAL PLAN IDS (From Developer Dashboard)
-// STEP 7: Replace these with your actual Plan IDs from PayPal Dashboard
 export const PAYPAL_PLAN_IDS = {
     PRO_MONTHLY: 'P-5ML4271244454362WXSMG7TQ', // Example Sandbox ID
     PRO_YEARLY: 'P-YEARLY_PLAN_ID_HERE'
@@ -89,6 +88,70 @@ export const DEFAULT_NODE_SETTINGS: NodeSettings = {
   retryPolicy: 'none',
   continueOnError: false,
   mode: 'design-only'
+};
+
+
+const CONNECTOR_SUBTYPES = new Set<NexusSubtype>([
+  NexusSubtype.HTTP_REQUEST,
+  NexusSubtype.API_POLLER,
+  NexusSubtype.EMAIL,
+  NexusSubtype.GMAIL,
+  NexusSubtype.OUTLOOK,
+  NexusSubtype.IMAP,
+  NexusSubtype.MAILGUN,
+  NexusSubtype.WHATSAPP,
+  NexusSubtype.SLACK,
+  NexusSubtype.DISCORD,
+  NexusSubtype.TELEGRAM,
+  NexusSubtype.AWS_S3,
+  NexusSubtype.GOOGLE_DRIVE,
+  NexusSubtype.DRIVE_UPLOAD,
+  NexusSubtype.FTP,
+  NexusSubtype.MYSQL,
+  NexusSubtype.POSTGRES,
+  NexusSubtype.SQLITE,
+  NexusSubtype.SUPABASE,
+  NexusSubtype.AIRTABLE,
+  NexusSubtype.NOTION,
+  NexusSubtype.HUBSPOT,
+  NexusSubtype.SALESFORCE,
+  NexusSubtype.ZENDESK,
+  NexusSubtype.GITHUB,
+  NexusSubtype.GITLAB,
+  NexusSubtype.JIRA,
+  NexusSubtype.DOCKER,
+  NexusSubtype.SSH,
+  NexusSubtype.RAZORPAY,
+  NexusSubtype.STRIPE,
+  NexusSubtype.SHOPIFY,
+]);
+
+export const getDefaultNodeSettings = (subtype: NexusSubtype): NodeSettings => {
+  if (CONNECTOR_SUBTYPES.has(subtype)) {
+    return { retryPolicy: 'once', continueOnError: false, mode: 'runtime-ready' };
+  }
+  return { ...DEFAULT_NODE_SETTINGS };
+};
+
+export const getConnectorValidationErrors = (subtype: NexusSubtype, config: NexusConfig): string[] => {
+  const errors: string[] = [];
+  if (!CONNECTOR_SUBTYPES.has(subtype)) return errors;
+
+  if (subtype === NexusSubtype.HTTP_REQUEST || subtype === NexusSubtype.API_POLLER) {
+    const url = typeof config?.url === 'string' ? config.url.trim() : '';
+    if (!url) errors.push('URL is required for HTTP/API Poller connector.');
+  }
+
+  if (subtype === NexusSubtype.EMAIL || subtype === NexusSubtype.MAILGUN || subtype === NexusSubtype.GMAIL) {
+    const to = typeof config?.to === 'string' ? config.to.trim() : '';
+    if (!to) errors.push('Recipient (to) is required for email connector.');
+  }
+
+  if ((subtype === NexusSubtype.STRIPE || subtype === NexusSubtype.RAZORPAY) && !config?.action) {
+    errors.push('Payment connector requires an action (charge/verify/subscription).');
+  }
+
+  return errors;
 };
 
 // --- TRUTHFUL CHANNEL COPY ---
