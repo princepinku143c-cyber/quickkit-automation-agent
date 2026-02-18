@@ -2,6 +2,9 @@
 import * as admin from 'firebase-admin';
 import { Buffer } from 'buffer';
 
+export const runtime = "nodejs";
+
+
 const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
 const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET;
 const PAYPAL_WEBHOOK_ID = process.env.PAYPAL_WEBHOOK_ID;
