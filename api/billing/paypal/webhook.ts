@@ -1,6 +1,8 @@
 
-import * as admin from 'firebase-admin';
+import { initializeApp, cert, getApps } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 import { Buffer } from 'buffer';
+
 
 export const runtime = "nodejs";
 
@@ -16,6 +18,23 @@ const PAYPAL_API = process.env.PAYPAL_ENV === 'live'
 const LOG_PREFIX = '[PAYPAL_WEBHOOK]';
 
 let isFirebaseReady = false;
+
+if (!getApps().length) {
+  try {
+    initializeApp({
+      credential: cert({
+        projectId: process.env.FIREBASE_PROJECT_ID!,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL!,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY!.replace(/\\n/g, '\n'),
+      }),
+    });
+    console.log('[PAYPAL_WEBHOOK] Firebase initialized');
+  } catch (err) {
+    console.error('[PAYPAL_WEBHOOK] Firebase init failed:', err);
+  }
+}
+
+const db = getFirestore();
 console.log("[PAYPAL_WEBHOOK] ENV CHECK:", { projectId: !!process.env.FIREBASE_PROJECT_ID, clientEmail: !!process.env.FIREBASE_CLIENT_EMAIL, privateKey: !!process.env.FIREBASE_PRIVATE_KEY, paypalClientId: !!process.env.PAYPAL_CLIENT_ID });
 
 
