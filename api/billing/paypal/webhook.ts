@@ -36,39 +36,6 @@ if (!getApps().length) {
 
 const db = getFirestore();
 console.log("[PAYPAL_WEBHOOK] ENV CHECK:", { projectId: !!process.env.FIREBASE_PROJECT_ID, clientEmail: !!process.env.FIREBASE_CLIENT_EMAIL, privateKey: !!process.env.FIREBASE_PRIVATE_KEY, paypalClientId: !!process.env.PAYPAL_CLIENT_ID });
-
-
-if (!admin.apps?.length) {  try {
-    const privateKey = process.env.FIREBASE_PRIVATE_KEY;
-    if (privateKey) {
-      admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId: process.env.FIREBASE_PROJECT_ID,
-          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-          privateKey: privateKey.replace(/\\n/g, '\n'),
-        })
-      });
-      isFirebaseReady = true;
-      console.log(`${LOG_PREFIX} Firebase Admin initialized.`);
-    } else {
-      console.warn(`${LOG_PREFIX} FIREBASE_PRIVATE_KEY missing. Database operations unavailable.`);
-    }
-  } catch (e) {
-    console.error(`${LOG_PREFIX} Firebase init failed:`, e);
-  }
-} else {
-  isFirebaseReady = true;
-}
-
-const getDb = () => {
-  if (!isFirebaseReady) return null;
-  try {
-    return admin.firestore();
-  } catch {
-    return null;
-  }
-};
-
 export const config = {
   api: {
     bodyParser: false,
