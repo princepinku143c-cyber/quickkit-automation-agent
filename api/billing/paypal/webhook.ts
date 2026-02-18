@@ -13,6 +13,8 @@ const PAYPAL_API = process.env.PAYPAL_ENV === 'live'
 const LOG_PREFIX = '[PAYPAL_WEBHOOK]';
 
 let isFirebaseReady = false;
+console.log("[PAYPAL_WEBHOOK] ENV CHECK:", { projectId: !!process.env.FIREBASE_PROJECT_ID, clientEmail: !!process.env.FIREBASE_CLIENT_EMAIL, privateKey: !!process.env.FIREBASE_PRIVATE_KEY, paypalClientId: !!process.env.PAYPAL_CLIENT_ID });
+
 
 if (!admin.apps?.length) {  try {
     const privateKey = process.env.FIREBASE_PRIVATE_KEY;
