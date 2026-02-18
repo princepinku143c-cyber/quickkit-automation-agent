@@ -14,8 +14,7 @@ const LOG_PREFIX = '[PAYPAL_WEBHOOK]';
 
 let isFirebaseReady = false;
 
-if (!admin.apps.length) {
-  try {
+if (!admin.apps?.length) {  try {
     const privateKey = process.env.FIREBASE_PRIVATE_KEY;
     if (privateKey) {
       admin.initializeApp({
@@ -283,3 +282,9 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({ error: error.message || 'Internal Error' });
   }
 }
+
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
