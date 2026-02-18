@@ -1,17 +1,16 @@
 
-import React, { Suspense, useState } from 'react';
+import React, { useState } from 'react';
 import { BLUEPRINTS } from '../data/blueprints'; 
 import { NexusSubtype, NexusType, Blueprint, Nexus, Synapse, UserPlan } from '../types';
 import { Layers, ArrowRight, Zap, Building2, Globe, Brain, Split, GitMerge, HardDrive, Database, Terminal, MessageCircle, LayoutGrid, User, Key, LogIn, LogOut, Loader2, Crown, ShieldCheck, Search, Box, Cpu, Sparkles, Gift, ListFilter, Settings, Activity } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isAdmin } from '../services/adminGuard'; 
+import PricingModal from './PricingModal';
 import MarketplaceModal from './MarketplaceModal'; 
 import ReferralModal from './ReferralModal'; 
 import AdminDashboard from './AdminDashboard'; 
 import NodeLibrary from './sidebar/NodeLibrary'; 
 import { PLAN_LIMITS } from '../constants';
-
-const PricingModal = React.lazy(() => import('./PricingModal'));
 
 interface SidebarProps {
   isOpen: boolean;
@@ -78,9 +77,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBl
 
   return (
     <>
-      <Suspense fallback={null}>
-        <PricingModal isOpen={isPricingOpen} onClose={() => setIsPricingOpen(false)} />
-      </Suspense>
+      <PricingModal isOpen={isPricingOpen} onClose={() => setIsPricingOpen(false)} />
       <MarketplaceModal isOpen={isMarketplaceOpen} onClose={() => setIsMarketplaceOpen(false)} />
       <ReferralModal isOpen={isReferralOpen} onClose={() => setIsReferralOpen(false)} />
       

@@ -155,7 +155,7 @@ const AppContent: React.FC = () => {
               }
           });
           listPromos(); 
-
+          
           return () => unsubscribeProfile();
       } else {
           setFullPlan(null);

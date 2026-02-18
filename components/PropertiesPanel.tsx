@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Nexus, NexusSubtype, Credential, NodeSettings } from '../types';
 import { DEFAULT_NODE_SETTINGS } from '../constants';
 import { 
@@ -48,7 +48,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ nexus, onClose, onUpd
     onUpdate(nexus.id, { settings: { ...safeSettings, [key]: value } });
   };
 
-  const featureRequestUrl = useMemo(() => {
+  const featureRequestUrl = (() => {
     const subject = encodeURIComponent(`[Node Feature Request] ${safeSubtype}`);
     const body = encodeURIComponent(
       `Hi NexusStream Team,%0D%0A%0D%0AI want additional capability in node: ${safeSubtype}.%0D%0A` +
@@ -57,7 +57,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ nexus, onClose, onUpd
       `Requested feature:%0D%0A- ...%0D%0A%0D%0AUse case:%0D%0A- ...`
     );
     return `mailto:support@nexusstream.ai?subject=${subject}&body=${body}`;
-  }, [safeSubtype, nexus.id, safeConfig]);
+  })();
 
   const renderConfig = () => {
       // Cast back to NexusSubtype for strict checks, though we use safeSubtype for display
