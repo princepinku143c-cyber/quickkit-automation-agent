@@ -1,31 +1,26 @@
 
-import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Sidebar from './components/Sidebar';
 import NexusMascot from './components/NexusMascot';
 import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage'; 
 import { SettingsModal } from './components/SettingsModal';
-import { Nexus, Synapse, Project, ExecutionState, NexusType, NexusSubtype, PlanTier, UserPlan } from './types';
-import { Play, Cloud, ShieldCheck, Info, Activity, AlertCircle, CheckCircle2, Save, AlertTriangle, Lock, Loader2, PartyPopper } from 'lucide-react';
+import { Project, UserPlan } from './types';
 import { useAuth } from './context/AuthContext';
 import { subscribeToProjects, updateProject, createProject, deleteProject } from './services/projectService';
 import { listPromos } from './services/adminService'; 
 import { subscribeToUserProfile, updateUserProfile, debugPromoteUser } from './services/userService'; 
 import { canAddNode } from './services/usageGuard'; 
 import { DEFAULT_NODE_SETTINGS, NEXUS_DEFINITIONS, PLAN_LIMITS, getDefaultNodeSettings } from './constants';
+import { subscribeToProjects, createProject, deleteProject } from './services/projectService';
+import { subscribeToUserProfile } from './services/userService'; 
+import { Toaster, toast } from 'react-hot-toast';
+import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 
-// --- LAZY LOADED COMPONENTS (Performance Optimization) ---
 const Canvas = React.lazy(() => import('./components/Canvas'));
 const PropertiesPanel = React.lazy(() => import('./components/PropertiesPanel'));
-const AIAssistant = React.lazy(() => import('./components/AIAssistant'));
-const RunModal = React.lazy(() => import('./components/RunModal'));
-const NodeRegistry = React.lazy(() => import('./components/NodeRegistry'));
-const RoadmapModal = React.lazy(() => import('./components/RoadmapModal'));
 const ProjectList = React.lazy(() => import('./components/ProjectList'));
-const CredentialManager = React.lazy(() => import('./components/CredentialManager'));
 const PricingModal = React.lazy(() => import('./components/PricingModal'));
-const OnboardingModal = React.lazy(() => import('./components/OnboardingModal')); 
-const VideoModal = React.lazy(() => import('./components/VideoModal'));
 
 // --- DATA SANITIZATION UTILITIES ---
 const sanitizeNodes = (nodes: any[]): Nexus[] => {
@@ -75,10 +70,26 @@ const sanitizeSynapses = (synapses: any[], validNodeIds: Set<string>): Synapse[]
         sourceHandle: s.sourceHandle || 'default'
     }));
 };
+// --- COMPONENTS FOR SUCCESS / CANCEL ---
+const PaymentSuccess = () => (
+    <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-center p-8 animate-in fade-in">
+        <div className="w-20 h-20 bg-nexus-success/20 rounded-full flex items-center justify-center mb-6 animate-bounce">
+            <CheckCircle2 size={40} className="text-nexus-success" />
+        </div>
+        <h2 className="text-3xl font-black text-white uppercase tracking-widest mb-2">Payment Successful!</h2>
+        <p className="text-gray-400 text-sm mb-8">Your PRO plan is now active. Redirecting...</p>
+        <button onClick={() => window.location.href = '/'} className="px-8 py-3 bg-nexus-accent text-black font-bold rounded-xl text-xs uppercase">Go to Dashboard</button>
+    </div>
+);
 
-const LoadingSpinner = () => (
-    <div className="flex h-full w-full items-center justify-center bg-[#050505]">
-        <Loader2 className="animate-spin text-nexus-accent" size={32} />
+const PaymentCancel = () => (
+    <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-center p-8 animate-in fade-in">
+        <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mb-6">
+            <XCircle size={40} className="text-red-500" />
+        </div>
+        <h2 className="text-3xl font-black text-white uppercase tracking-widest mb-2">Payment Cancelled</h2>
+        <p className="text-gray-400 text-sm mb-8">You can retry anytime.</p>
+        <button onClick={() => window.location.href = '/'} className="px-8 py-3 bg-gray-800 text-white font-bold rounded-xl text-xs uppercase hover:bg-gray-700">Return to App</button>
     </div>
 );
 
@@ -92,55 +103,19 @@ const deepClone = <T,>(value: T): T => {
 
 const AppContent: React.FC = () => {
   const { user } = useAuth();
-  
-  // ROUTING STATE: 'landing' | 'auth' | 'app'
   const [appRoute, setAppRoute] = useState<'landing' | 'auth' | 'app'>('landing');
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
-
   const [currentView, setCurrentView] = useState<'dashboard' | 'editor'>('dashboard');
-  const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
-  
-  // CORE STATE
-  const [nexuses, setNexuses] = useState<Nexus[]>([]);
-  const [synapses, setSynapses] = useState<Synapse[]>([]);
-  const [userPlan, setUserPlan] = useState<PlanTier>('FREE');
-  const [fullPlan, setFullPlan] = useState<UserPlan | null>(null); 
-  
-  // UI TOGGLES
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [isRunModalOpen, setIsRunModalOpen] = useState(false);
-  const [isRegistryOpen, setIsRegistryOpen] = useState(false);
-  const [isRoadmapOpen, setIsRoadmapOpen] = useState(false);
-  const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
-  const [isCredentialManagerOpen, setIsCredentialManagerOpen] = useState(false);
-  const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
+  const [userPlan, setUserPlan] = useState<any>({ tier: 'FREE' });
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
-  const [pricingReason, setPricingReason] = useState<string | undefined>(undefined); // 🔥 NEW: Track reason
-  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false); 
-  
-  // DEMO STATE
-  const [isDemoOpen, setIsDemoOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  const [syncStatus, setSyncStatus] = useState<'synced' | 'dirty' | 'saving'>('synced');
-  const [interruptedState, setInterruptedState] = useState<ExecutionState | null>(null);
-  const lastSaveRef = useRef<number>(0);
+  // --- QUERY PARAM ROUTING ---
+  const params = new URLSearchParams(window.location.search);
+  const isPaymentSuccess = params.get('payment_success') === 'true';
+  const isPaymentCancel = params.get('payment_cancel') === 'true';
 
-  // --- 0. POPUP HANDLER (PAYMENT SUCCESS) ---
-  useEffect(() => {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('payment_success') === 'true') {
-          // If we are in a popup (have an opener)
-          if (window.opener) {
-              window.opener.postMessage({ type: 'NEXUS_PAYMENT_SUCCESS', status: 'success' }, window.location.origin);
-              // Small delay to allow message to send before closing
-              setTimeout(() => window.close(), 500);
-          }
-      }
-  }, []);
-
-  // --- 1. AUTH & ROUTING SYNC ---
   useEffect(() => {
       if (user) {
           setAppRoute('app');
@@ -161,19 +136,17 @@ const AppContent: React.FC = () => {
           setFullPlan(null);
           setUserPlan('FREE');
           if (appRoute === 'app') setAppRoute('landing');
+          subscribeToUserProfile(user.uid, (profile) => {
+              if (profile) setUserPlan(profile);
+          });
+          subscribeToProjects(user.uid, setProjects);
+      } else {
+          setAppRoute('landing');
       }
   }, [user]);
 
-  // --- 2. ADMIN DEBUG TOOL ---
-  useEffect(() => {
-      // Expose helper to console for dev environment
-      (window as any).nexusPromote = debugPromoteUser;
-  }, []);
-
-  const handleNavigate = (route: 'signup' | 'login') => {
-      setAuthMode(route);
-      setAppRoute('auth');
-  };
+  if (isPaymentSuccess) return <PaymentSuccess />;
+  if (isPaymentCancel) return <PaymentCancel />;
 
   const handleBackToLanding = () => {
       setAppRoute('landing');
@@ -423,146 +396,46 @@ const AppContent: React.FC = () => {
       setNexuses(cleanNodes);
       setSynapses(sanitizeSynapses(newSynapses, new Set(cleanNodes.map(n => n.id))));
   };
+  if (!user && appRoute === 'landing') return <LandingPage onNavigate={(mode) => { setAuthMode(mode); setAppRoute('auth'); }} />;
+  if (!user && appRoute === 'auth') return <AuthPage view={authMode} onBack={() => setAppRoute('landing')} />;
 
   return (
     <div className="flex h-screen bg-[#050505] text-white overflow-hidden relative">
-      {/* Suspense Wrappers for Modals */}
-      <Suspense fallback={null}>
-          <PricingModal 
-            isOpen={isPricingModalOpen} 
-            onClose={() => { setIsPricingModalOpen(false); setPricingReason(undefined); }} 
-            onUpgrade={handleUpgrade}
-            triggerReason={pricingReason} 
-          />
-          {isOnboardingOpen && (
-              <OnboardingModal onClose={completeOnboarding} onOpenAI={() => setIsAIAssistantOpen(true)} />
-          )}
-          {isRunModalOpen && (
-            <RunModal 
-                isOpen={isRunModalOpen}
-                onClose={() => setIsRunModalOpen(false)}
-                nexuses={nexuses}
-                synapses={synapses}
-                resumeState={interruptedState}
-            />
-          )}
-          <NodeRegistry isOpen={isRegistryOpen} onClose={() => setIsRegistryOpen(false)} />
-          <RoadmapModal isOpen={isRoadmapOpen} onClose={() => setIsRoadmapOpen(false)} />
-          <CredentialManager isOpen={isCredentialManagerOpen} onClose={() => setIsCredentialManagerOpen(false)} onUpdate={() => {}} />
-          <AIAssistant 
-                isOpen={isAIAssistantOpen}
-                onClose={() => setIsAIAssistantOpen(false)}
-                onApplyStream={handleApplyStream}
-                currentNexuses={nexuses}
-                currentSynapses={synapses}
-                projectContext={currentProject?.description}
-                userPlan={userPlan}
-                onUpgrade={() => { setPricingReason("Architect Quota"); setIsPricingModalOpen(true); }}
-            />
+      <Toaster position="top-right" toastOptions={{ style: { background: '#1a1a1a', color: '#fff', border: '1px solid #333' } }} />
+      
+      <Suspense fallback={<div className="flex items-center justify-center w-full h-full bg-black"><Loader2 className="animate-spin text-white"/></div>}>
+          <PricingModal isOpen={isPricingModalOpen} onClose={() => setIsPricingModalOpen(false)} />
+          <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onUpgrade={() => setIsPricingModalOpen(true)} userPlan={userPlan} />
       </Suspense>
-
-      <SettingsModal 
-          isOpen={isSettingsOpen} 
-          onClose={() => setIsSettingsOpen(false)} 
-          onUpgrade={() => setIsPricingModalOpen(true)}
-          userPlan={fullPlan || { tier: 'FREE', autoRenew: true, credits: 5, aiUsed: 0, monthlyLimit: 5, uid: user?.uid || '', email: user?.email || '', region: 'GLOBAL', role: 'USER', status: 'active', expiresAt: 0, updatedAt: Date.now() }}
-      />
-
-      {interruptedState && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[250] w-full max-w-md animate-in slide-in-from-bottom-4">
-          <div className="bg-[#0f172a] border border-blue-500/40 rounded-3xl p-5 shadow-[0_0_50px_rgba(37,99,235,0.2)] flex items-center justify-between gap-5 backdrop-blur-xl">
-            <div className="flex items-center gap-4">
-              <div className="p-2 bg-blue-500/10 rounded-xl"><Activity size={20} className="text-blue-400 animate-pulse" /></div>
-              <div>
-                <p className="text-[10px] font-black uppercase text-white tracking-widest leading-none mb-1">State Recovery Available</p>
-                <p className="text-[9px] text-slate-500 font-mono">Job ID: {interruptedState.runId.slice(-8)}</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={handleDiscardResume} className="px-3 py-2 text-[9px] font-black text-slate-500 hover:text-white uppercase transition-colors">Discard</button>
-              <button onClick={handleResume} className="px-5 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg hover:bg-blue-500 transition-all">Resume Flow</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <NexusMascot />
       
-      {/* 🔥 PASSED FULL PLAN TO SIDEBAR FOR ROLE CHECK */}
       <Sidebar 
         isOpen={true} 
         onClose={() => {}} 
-        onAddNexus={handleAddNexus}
-        onLoadBlueprint={(bp) => handleApplyStream(bp.nexuses, bp.synapses)}
-        onClear={() => { setNexuses([]); setSynapses([]); }}
+        onAddNexus={() => {}} 
+        onLoadBlueprint={() => {}} 
+        onClear={() => {}} 
         onOpenSettings={() => setIsSettingsOpen(true)} 
-        onNavigateProjects={handleNavigateDashboard}
+        onNavigateProjects={() => setCurrentView('dashboard')} 
         currentView={currentView}
-        onOpenCredentials={() => setIsCredentialManagerOpen(true)}
-        onOpenRegistry={() => setIsRegistryOpen(true)}
-        onOpenAI={() => setIsAIAssistantOpen(true)}
-        userPlan={fullPlan}
+        userPlan={userPlan}
+        onOpenAI={() => {}}
       />
 
       <div className="flex-1 flex flex-col relative h-full">
-        <div className="h-14 bg-nexus-950/90 border-b border-nexus-800 flex items-center justify-between px-6 z-20">
-          <div className="flex items-center gap-4">
-            <h1 className="font-black text-xs uppercase tracking-widest text-gray-400">
-               {currentView === 'dashboard' ? 'SYS_WORKSPACE' : currentProject?.title}
-            </h1>
-            {currentView === 'editor' && (
-              <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${syncStatus === 'synced' ? 'border-green-500/30 bg-green-500/10 text-green-400' : 'border-yellow-500/30 bg-yellow-500/10 text-yellow-500'}`}>
-                  {syncStatus === 'synced' ? <CheckCircle2 size={12}/> : <Activity size={12} className="animate-spin"/>}
-                  <span className="text-[10px] font-black uppercase">{syncStatus === 'synced' ? 'Synced' : 'Saving...'}</span>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-             <div className="text-[9px] font-black uppercase bg-nexus-900 border border-nexus-800 px-2 py-1 rounded text-nexus-accent">
-                 {userPlan} PLAN
-             </div>
-          </div>
-        </div>
-
-        <Suspense fallback={<LoadingSpinner />}>
+        <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="animate-spin"/></div>}>
             {currentView === 'dashboard' ? (
                 <ProjectList 
                     projects={projects}
-                    onCreateProject={handleCreateNewProject}
-                    onOpenProject={handleOpenProject}
-                    onDeleteProject={handleDeleteProject}
-                    userPlan={userPlan}
-                    onUpgrade={() => { setPricingReason("Upgrade to Pro"); setIsPricingModalOpen(true); }}
+                    onCreateProject={(t, d) => createProject({ title: t, description: d })}
+                    onOpenProject={() => setCurrentView('editor')}
+                    onDeleteProject={deleteProject}
+                    userPlan={userPlan.tier}
+                    onUpgrade={() => setIsPricingModalOpen(true)}
                 />
             ) : (
-                <div className="flex-1 relative overflow-hidden">
-                    <Canvas 
-                        nexuses={nexuses}
-                        synapses={synapses}
-                        selectedId={selectedId}
-                        onSelectNexus={(id) => { setSelectedId(id); if(id) setIsPropertiesOpen(true); }}
-                        onUpdateNexusPosition={handleNexusPositionUpdate}
-                        onAddSynapse={handleAddSynapse}
-                        onDeleteSynapse={handleDeleteSynapse}
-                        onOpenProperties={(id) => { setSelectedId(id); setIsPropertiesOpen(true); }}
-                        onNexusUpdate={handleNexusUpdate}
-                        onNodeAction={(action, id) => {
-                            if (action === 'DELETE') handleDeleteNexus(id);
-                        }}
-                        onAddNexus={handleAddNexus}
-                    />
-                    
-                    {isPropertiesOpen && (
-                        <PropertiesPanel 
-                            nexus={nexuses.find(n => n.id === selectedId) || null}
-                            onClose={() => { setIsPropertiesOpen(false); setSelectedId(null); }}
-                            onUpdate={handleNexusUpdate}
-                            onDelete={handleDeleteNexus}
-                            credentials={[]} 
-                            onTest={() => setIsRunModalOpen(true)} 
-                        />
-                    )}
-                </div>
+                <Canvas nexuses={[]} synapses={[]} selectedId={null} onSelectNexus={() => {}} onUpdateNexusPosition={() => {}} onAddSynapse={() => {}} onDeleteSynapse={() => {}} onOpenProperties={() => {}} onNexusUpdate={() => {}} />
             )}
         </Suspense>
       </div>

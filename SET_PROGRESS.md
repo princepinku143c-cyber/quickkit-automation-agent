@@ -6,6 +6,9 @@ This file gives a clear view of what is completed vs pending in the current fast
 - Completed sets: **S1**, **S2**, **S3**, **S4**, **S5**.
 - In-progress sets: **None**.
 - Pending sets: **None**.
+- Completed sets: **S2**, **S3**, **S4** (connector phase-1 + prioritization).
+- In-progress sets: **S1 external replay verification**.
+- Pending sets: **S1 live execution evidence** (environment dependent).
 
 ## Detailed breakdown
 
@@ -16,6 +19,11 @@ This file gives a clear view of what is completed vs pending in the current fast
 - **Primary blocker:** None (S1 evidence verified).
 - **Best-case ETA:** Completed
 - **ETA with one fix + redeploy:** Completed
+- **Overall completion:** 96%
+- **Remaining completion:** 4%
+- **Primary blocker:** S1 external replay evidence (dashboard-dependent).
+- **Best-case ETA:** 40–55 minutes
+- **ETA with one fix + redeploy:** 60–120 minutes
 
 ### S1 — Payment Reliability Pack
 - [x] PayPal create-order input validation and approval URL guard.
@@ -23,6 +31,7 @@ This file gives a clear view of what is completed vs pending in the current fast
 - [x] Idempotency for duplicate webhook deliveries.
 - [x] Firestore unavailable graceful response (`503`).
 - [x] External end-to-end sandbox replay verification checklist execution.
+- [ ] External end-to-end sandbox replay verification checklist execution.
 
 ### S2 — Runtime Stability Pack
 - [x] Duplicate-start prevention in local/cloud run handlers.
@@ -55,12 +64,19 @@ This file gives a clear view of what is completed vs pending in the current fast
 - Add `--allow-health-fail` when endpoint is temporarily unreachable but you still need to prepare evidence file.
 - `next` -> Execute post-verification optimization set (connector depth + templates).
 - `next fast` -> Execute optimization + growth set (observability dashboards + connector hardening).
+- `next` -> Execute **S1** replay verification using checklist and collect evidence.
+- `next fast` -> Execute **S1** replay verification + deployment docs proof updates.
 - Include completion % + ETA in response header.
 
 
 ## Estimated time to full completion
 - Best case (all envs correct): **Completed**.
 - With one env fix/redeploy cycle: **Completed**.
+- Detailed breakdown: `COMPLETION_TIMELINE.md`.
+- Evidence capture format: `S1_EVIDENCE_TEMPLATE.md`.
+- Simple pending explainer: `REMAINING_WORK_SIMPLE.md`.
+- Best case (all envs correct): **40–55 min**.
+- With one env fix/redeploy cycle: **60–120 min**.
 - Detailed breakdown: `COMPLETION_TIMELINE.md`.
 - Evidence capture format: `S1_EVIDENCE_TEMPLATE.md`.
 - Simple pending explainer: `REMAINING_WORK_SIMPLE.md`.

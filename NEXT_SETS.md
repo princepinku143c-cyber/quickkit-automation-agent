@@ -70,3 +70,6 @@ From now until all sets are complete, every `next` / `next fast` update must inc
 - For completion status reference use `COMPLETION_TIMELINE.md`.
 - For simple pending + function-wise explanation use `REMAINING_WORK_SIMPLE.md`.
 - Each set must end with: summary + commands executed + result status.
+- For remaining ETA reference use `COMPLETION_TIMELINE.md`.
+- For simple pending + function-wise explanation use `REMAINING_WORK_SIMPLE.md`.
+- Each set must end with: summary + commands executed + result status.

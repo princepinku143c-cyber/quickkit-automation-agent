@@ -99,6 +99,11 @@ Use this when you need concrete proof that idempotency + upgrade path is working
 - [ ] Replay event: no second upgrade mutation.
 - [ ] Replay event: duplicate skip visible in logs.
 - [ ] UI still shows correct plan after refresh.
+- [ ] First event upgraded to PRO.
+- [ ] First event wrote payment doc.
+- [ ] Replay did not perform second upgrade.
+- [ ] Duplicate skip path confirmed in logs.
+- [ ] UI shows correct plan after refresh.
 
 ### 8.5 Optional API sanity cURL
 ```bash
