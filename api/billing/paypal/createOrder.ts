@@ -3,6 +3,7 @@ import { Buffer } from 'buffer';
 
 const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
 const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET;
+const APP_BASE_URL = process.env.APP_BASE_URL;
 const PAYPAL_API = process.env.PAYPAL_ENV === 'live' 
     ? 'https://api-m.paypal.com' 
     : 'https://api-m.sandbox.paypal.com';
@@ -17,6 +18,26 @@ export default async function handler(req: any, res: any) {
 
     try {
         const { amount, currency, notes } = req.body;
+        const uid = notes?.userId;
+        const origin = APP_BASE_URL || req.headers.origin;
+        const normalizedAmount = Number(amount);
+        const normalizedCurrency = (currency || 'USD').toUpperCase();
+
+        if (!uid) {
+            return res.status(400).json({ error: 'Missing notes.userId' });
+        }
+
+        if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+            return res.status(400).json({ error: 'Invalid amount' });
+        }
+
+        if (!/^[A-Z]{3}$/.test(normalizedCurrency)) {
+            return res.status(400).json({ error: 'Invalid currency code' });
+        }
+
+        if (!origin) {
+            return res.status(500).json({ error: 'Missing APP_BASE_URL/Origin for PayPal return URLs' });
+        }
 
         // 1. Get Access Token
         const auth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString('base64');
@@ -43,15 +64,16 @@ export default async function handler(req: any, res: any) {
                 intent: 'CAPTURE',
                 purchase_units: [{
                     amount: {
-                        currency_code: currency || 'USD',
-                        value: (amount / 100).toFixed(2) // Convert cents to dollars if needed, assuming input is smallest unit
+                        currency_code: normalizedCurrency,
+                        value: (normalizedAmount / 100).toFixed(2) // Convert cents to dollars if needed, assuming input is smallest unit
                     },
-                    custom_id: notes?.userId // Attach User ID for Webhook tracking
+                    custom_id: uid, // Attach User ID for Webhook tracking
+                    invoice_id: `NX-${uid}-${Date.now()}`
                 }],
                 application_context: {
                     user_action: 'PAY_NOW',
-                    return_url: `${req.headers.origin}/?payment_success=true`, // Simple return handling
-                    cancel_url: `${req.headers.origin}/?payment_cancel=true`
+                    return_url: `${origin}/?payment_success=true`, // Simple return handling
+                    cancel_url: `${origin}/?payment_cancel=true`
                 }
             })
         });
@@ -61,10 +83,13 @@ export default async function handler(req: any, res: any) {
 
         // 3. Extract Approval Link
         const approvalLink = orderData.links.find((l: any) => l.rel === 'approve');
+        if (!approvalLink?.href) {
+            throw new Error('PayPal approval URL missing from create order response');
+        }
 
         return res.status(200).json({
             id: orderData.id,
-            approvalUrl: approvalLink?.href
+            approvalUrl: approvalLink.href
         });
 
     } catch (error: any) {
