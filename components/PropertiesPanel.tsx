@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Nexus, NexusSubtype, Credential, NodeSettings } from '../types';
 import { DEFAULT_NODE_SETTINGS } from '../constants';
 import { 
-  X, Trash2, Settings, Play, Sliders, Key, Loader2, ShieldAlert, RotateCcw, Clock, Zap, AlertTriangle, Info 
+  X, Trash2, Settings, Play, Sliders, Key, Loader2, ShieldAlert, RotateCcw, Clock, Zap, AlertTriangle, Info, MessageSquarePlus
 } from 'lucide-react';
 import { SectionHeader, InputField, SelectField, ToggleField, TextAreaField } from './ConfigInputs';
 
@@ -47,6 +47,17 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ nexus, onClose, onUpd
   const handleSettingsChange = (key: keyof NodeSettings, value: any) => {
     onUpdate(nexus.id, { settings: { ...safeSettings, [key]: value } });
   };
+
+  const featureRequestUrl = (() => {
+    const subject = encodeURIComponent(`[Node Feature Request] ${safeSubtype}`);
+    const body = encodeURIComponent(
+      `Hi NexusStream Team,%0D%0A%0D%0AI want additional capability in node: ${safeSubtype}.%0D%0A` +
+      `Node ID: ${nexus.id}%0D%0A` +
+      `Current config:%0D%0A${JSON.stringify(safeConfig, null, 2)}%0D%0A%0D%0A` +
+      `Requested feature:%0D%0A- ...%0D%0A%0D%0AUse case:%0D%0A- ...`
+    );
+    return `mailto:support@nexusstream.ai?subject=${subject}&body=${body}`;
+  })();
 
   const renderConfig = () => {
       // Cast back to NexusSubtype for strict checks, though we use safeSubtype for display
@@ -188,6 +199,18 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ nexus, onClose, onUpd
       <div className="p-5 flex-1 overflow-y-auto space-y-6 bg-[#0a0a0a] custom-scrollbar">
           <InputField label="Block Label" value={safeLabel} onChange={(v: string) => onUpdate(nexus.id, { label: v })} />
           {activeTab === 'config' ? renderConfig() : renderSettings()}
+
+          <div className="mt-2 p-3 rounded-xl border border-nexus-800 bg-nexus-900/40">
+              <div className="flex items-start gap-2 text-[10px] text-gray-400">
+                <MessageSquarePlus size={14} className="text-nexus-accent mt-0.5" />
+                <div>
+                  Missing integration option? Send a manual feature request for this node.
+                  <a href={featureRequestUrl} className="block mt-2 text-nexus-accent font-bold hover:underline">
+                    Request feature for {safeSubtype.replace(/_/g, ' ')}
+                  </a>
+                </div>
+              </div>
+          </div>
       </div>
 
       <div className="p-4 border-t border-nexus-800 bg-nexus-950 flex gap-3 shrink-0">

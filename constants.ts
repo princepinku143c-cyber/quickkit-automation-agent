@@ -1,5 +1,5 @@
 
-import { NexusSubtype, NexusType, NexusDefinition, NodeSettings, AddOnPack } from "./types";
+import { NexusSubtype, NexusType, NexusDefinition, NodeSettings, AddOnPack, NexusConfig } from "./types";
 import { 
   Zap, Clock, Globe, Brain, 
   Pause, Split, Terminal, Mail,
@@ -35,7 +35,7 @@ export const AI_MODELS = {
 // --- PLAN LIMITS (CONVERSION ENGINE) ---
 export const PLAN_LIMITS = {
   FREE: {
-    PROJECTS: 3,      // Workflows
+    PROJECTS: 2,      // Workflows
     RUNS: 100,        // Executions per month
     API_CALLS: 5,     // 5 AI Prompts
     MAX_NODES: 10,
@@ -89,6 +89,70 @@ export const DEFAULT_NODE_SETTINGS: NodeSettings = {
   retryPolicy: 'none',
   continueOnError: false,
   mode: 'design-only'
+};
+
+
+const CONNECTOR_SUBTYPES = new Set<NexusSubtype>([
+  NexusSubtype.HTTP_REQUEST,
+  NexusSubtype.API_POLLER,
+  NexusSubtype.EMAIL,
+  NexusSubtype.GMAIL,
+  NexusSubtype.OUTLOOK,
+  NexusSubtype.IMAP,
+  NexusSubtype.MAILGUN,
+  NexusSubtype.WHATSAPP,
+  NexusSubtype.SLACK,
+  NexusSubtype.DISCORD,
+  NexusSubtype.TELEGRAM,
+  NexusSubtype.AWS_S3,
+  NexusSubtype.GOOGLE_DRIVE,
+  NexusSubtype.DRIVE_UPLOAD,
+  NexusSubtype.FTP,
+  NexusSubtype.MYSQL,
+  NexusSubtype.POSTGRES,
+  NexusSubtype.SQLITE,
+  NexusSubtype.SUPABASE,
+  NexusSubtype.AIRTABLE,
+  NexusSubtype.NOTION,
+  NexusSubtype.HUBSPOT,
+  NexusSubtype.SALESFORCE,
+  NexusSubtype.ZENDESK,
+  NexusSubtype.GITHUB,
+  NexusSubtype.GITLAB,
+  NexusSubtype.JIRA,
+  NexusSubtype.DOCKER,
+  NexusSubtype.SSH,
+  NexusSubtype.RAZORPAY,
+  NexusSubtype.STRIPE,
+  NexusSubtype.SHOPIFY,
+]);
+
+export const getDefaultNodeSettings = (subtype: NexusSubtype): NodeSettings => {
+  if (CONNECTOR_SUBTYPES.has(subtype)) {
+    return { retryPolicy: 'once', continueOnError: false, mode: 'runtime-ready' };
+  }
+  return { ...DEFAULT_NODE_SETTINGS };
+};
+
+export const getConnectorValidationErrors = (subtype: NexusSubtype, config: NexusConfig): string[] => {
+  const errors: string[] = [];
+  if (!CONNECTOR_SUBTYPES.has(subtype)) return errors;
+
+  if (subtype === NexusSubtype.HTTP_REQUEST || subtype === NexusSubtype.API_POLLER) {
+    const url = typeof config?.url === 'string' ? config.url.trim() : '';
+    if (!url) errors.push('URL is required for HTTP/API Poller connector.');
+  }
+
+  if (subtype === NexusSubtype.EMAIL || subtype === NexusSubtype.MAILGUN || subtype === NexusSubtype.GMAIL) {
+    const to = typeof config?.to === 'string' ? config.to.trim() : '';
+    if (!to) errors.push('Recipient (to) is required for email connector.');
+  }
+
+  if ((subtype === NexusSubtype.STRIPE || subtype === NexusSubtype.RAZORPAY) && !config?.action) {
+    errors.push('Payment connector requires an action (charge/verify/subscription).');
+  }
+
+  return errors;
 };
 
 // --- TRUTHFUL CHANNEL COPY ---

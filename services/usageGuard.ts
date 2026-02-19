@@ -167,7 +167,7 @@ export const verifyProjectCreationLimit = async (uid: string): Promise<void> => 
 
     if (effectiveTier === 'BUSINESS') return;
 
-    const limit = PLAN_LIMITS[effectiveTier as keyof typeof PLAN_LIMITS]?.PROJECTS || 3;
+    const limit = PLAN_LIMITS[effectiveTier as keyof typeof PLAN_LIMITS]?.PROJECTS || 2;
     const current = userData.usage?.workflows || 0;
 
     if (current >= limit) {
@@ -187,7 +187,7 @@ export const checkRunLimit = async (uid: string): Promise<boolean> => {
 export const canCreateWorkflow = (userPlan: UserPlan, currentProjectCount: number): boolean => {
     const { effectiveTier } = _resolveEffectivePlan(userPlan);
     if (effectiveTier === 'BUSINESS') return true;
-    const limit = PLAN_LIMITS[effectiveTier as keyof typeof PLAN_LIMITS]?.PROJECTS || 3;
+    const limit = PLAN_LIMITS[effectiveTier as keyof typeof PLAN_LIMITS]?.PROJECTS || 2;
     const usage = userPlan.usage?.workflows ?? currentProjectCount;
     return usage < limit;
 };
