@@ -67,6 +67,9 @@ From now until all sets are complete, every `next` / `next fast` update must inc
 ## Default sequencing rule
 - If prompt is only `next`, execute **S2** first, then continue **S1 → S3 → S4 → S5**.
 - If prompt is `next fast`, execute current set + next related set (max 2 sets).
+- For completion status reference use `COMPLETION_TIMELINE.md`.
+- For simple pending + function-wise explanation use `REMAINING_WORK_SIMPLE.md`.
+- Each set must end with: summary + commands executed + result status.
 - For remaining ETA reference use `COMPLETION_TIMELINE.md`.
 - For simple pending + function-wise explanation use `REMAINING_WORK_SIMPLE.md`.
 - Each set must end with: summary + commands executed + result status.

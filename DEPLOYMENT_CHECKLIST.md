@@ -94,6 +94,11 @@ Use this when you need concrete proof that idempotency + upgrade path is working
 - Expected API behavior: `duplicate: true` response or duplicate-skip log.
 
 ### 8.4 Evidence checklist (mark pass/fail)
+- [ ] First event: user upgraded to `PRO`.
+- [ ] First event: payment doc written (`status=success`).
+- [ ] Replay event: no second upgrade mutation.
+- [ ] Replay event: duplicate skip visible in logs.
+- [ ] UI still shows correct plan after refresh.
 - [ ] First event upgraded to PRO.
 - [ ] First event wrote payment doc.
 - [ ] Replay did not perform second upgrade.

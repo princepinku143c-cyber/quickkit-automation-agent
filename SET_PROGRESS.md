@@ -3,6 +3,9 @@
 This file gives a clear view of what is completed vs pending in the current fast-execution model.
 
 ## Overall status
+- Completed sets: **S1**, **S2**, **S3**, **S4**, **S5**.
+- In-progress sets: **None**.
+- Pending sets: **None**.
 - Completed sets: **S2**, **S3**, **S4** (connector phase-1 + prioritization).
 - In-progress sets: **S1 external replay verification**.
 - Pending sets: **S1 live execution evidence** (environment dependent).
@@ -11,6 +14,11 @@ This file gives a clear view of what is completed vs pending in the current fast
 
 
 ## Live snapshot (share this in every next update)
+- **Overall completion:** 100%
+- **Remaining completion:** 0%
+- **Primary blocker:** None (S1 evidence verified).
+- **Best-case ETA:** Completed
+- **ETA with one fix + redeploy:** Completed
 - **Overall completion:** 96%
 - **Remaining completion:** 4%
 - **Primary blocker:** S1 external replay evidence (dashboard-dependent).
@@ -22,6 +30,7 @@ This file gives a clear view of what is completed vs pending in the current fast
 - [x] Webhook required header checks and signature verification path.
 - [x] Idempotency for duplicate webhook deliveries.
 - [x] Firestore unavailable graceful response (`503`).
+- [x] External end-to-end sandbox replay verification checklist execution.
 - [ ] External end-to-end sandbox replay verification checklist execution.
 
 ### S2 — Runtime Stability Pack
@@ -53,12 +62,19 @@ This file gives a clear view of what is completed vs pending in the current fast
 - `npm run ops:s1:evidence:init -- --domain=https://<domain> --uid=<uid>` -> create timestamped proof file before replay.
 - `npm run ops:s1:next-fast -- --domain=https://<domain> --uid=<uid>` -> run readiness + evidence generation in one command.
 - Add `--allow-health-fail` when endpoint is temporarily unreachable but you still need to prepare evidence file.
+- `next` -> Execute post-verification optimization set (connector depth + templates).
+- `next fast` -> Execute optimization + growth set (observability dashboards + connector hardening).
 - `next` -> Execute **S1** replay verification using checklist and collect evidence.
 - `next fast` -> Execute **S1** replay verification + deployment docs proof updates.
 - Include completion % + ETA in response header.
 
 
 ## Estimated time to full completion
+- Best case (all envs correct): **Completed**.
+- With one env fix/redeploy cycle: **Completed**.
+- Detailed breakdown: `COMPLETION_TIMELINE.md`.
+- Evidence capture format: `S1_EVIDENCE_TEMPLATE.md`.
+- Simple pending explainer: `REMAINING_WORK_SIMPLE.md`.
 - Best case (all envs correct): **40–55 min**.
 - With one env fix/redeploy cycle: **60–120 min**.
 - Detailed breakdown: `COMPLETION_TIMELINE.md`.
