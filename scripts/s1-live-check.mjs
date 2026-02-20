@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import process from 'node:process';
 
 const args = process.argv.slice(2);
 const argBase = args.find((a) => a.startsWith('--base-url='));
@@ -10,6 +11,8 @@ if (!baseUrl) {
 }
 
 const healthUrl = `${baseUrl}/api/billing/paypal/webhook/health`;
+// FIX: Point to the actual webhook handler root, not a non-existent /health sub-path
+const healthUrl = `${baseUrl}/api/billing/paypal/webhook`;
 
 async function main() {
   console.log(`🔎 Checking webhook health: ${healthUrl}`);
@@ -78,4 +81,5 @@ async function main() {
   console.log('3) Fill evidence in S1_EVIDENCE_TEMPLATE.md.');
 }
 
+main();
 main();

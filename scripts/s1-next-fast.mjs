@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import process from 'node:process';
 
 const args = process.argv.slice(2);
 const hasFlag = (name) => args.includes(`--${name}`);
@@ -61,4 +62,5 @@ console.log('Now do these manual steps in order:');
 console.log('1. Complete one sandbox payment from app UI.');
 console.log('2. Replay same webhook event from PayPal dashboard.');
 console.log('3. Fill generated evidence file and mark all 5 checks pass.');
+console.log('4. Update SET_PROGRESS.md to mark S1 done.');
 console.log('4. Update SET_PROGRESS.md to mark S1 done.');

@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -113,59 +114,6 @@
       };
     </script>
 
-    <style>
-      body {
-        background-color: #050505;
-        color: #e2e8f0;
-        /* Allow scroll for SEO pages, app will lock it when mounted */
-        overflow-y: auto; 
-        overflow-x: hidden;
-        -webkit-tap-highlight-color: transparent;
-        scroll-behavior: smooth;
-      }
-      /* Ensure root container handles height properly */
-      #root {
-        min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-      }
-      ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #262626;
-        border-radius: 3px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #050505;
-      }
-      .grid-pattern {
-        background-color: #050505;
-        background-image: radial-gradient(circle at 1px 1px, #1a1a1a 1px, transparent 0);
-        background-size: 30px 30px;
-      }
-      .liquid-glass {
-        background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%);
-        backdrop-filter: blur(40px);
-        -webkit-backdrop-filter: blur(40px);
-      }
-      .node-active {
-        box-shadow: 0 0 40px -10px rgba(0, 255, 157, 0.4);
-      }
-      .hologram-line {
-        filter: drop-shadow(0 0 4px currentColor);
-      }
-      .canvas-scan {
-        position: absolute;
-        width: 100%;
-        height: 10px;
-        background: linear-gradient(to bottom, transparent, rgba(0, 255, 157, 0.1), transparent);
-        pointer-events: none;
-        z-index: 5;
-      }
-    </style>
-
     <script type="importmap">
 {
   "imports": {
@@ -178,6 +126,7 @@
     "@google/genai": "https://aistudiocdn.com/@google/genai@1.30.0",
     "lucide-react": "https://aistudiocdn.com/lucide-react@0.555.0",
     "recharts": "https://aistudiocdn.com/recharts@3.5.0",
+    "react-hot-toast": "https://esm.sh/react-hot-toast@2.4.1",
     "react/": "https://esm.sh/react@^19.2.3/",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "firebase/": "https://esm.sh/firebase@^12.7.0/",
@@ -188,7 +137,11 @@
     "crypto": "https://esm.sh/crypto@^1.0.1",
     "razorpay": "https://esm.sh/razorpay@^2.9.6",
     "nodemailer": "https://esm.sh/nodemailer@^8.0.1",
-    "buffer": "https://esm.sh/buffer@^6.0.3"
+    "buffer": "https://esm.sh/buffer@^6.0.3",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.4",
+    "path": "https://esm.sh/path@^0.12.7",
+    "firebase-admin/": "https://esm.sh/firebase-admin@^13.6.1/"
   }
 }
 </script>

@@ -18,7 +18,6 @@ import {
 export const RECAPTCHA_SITE_KEY = "6Lc6SDcsAAAAAOsn_zVFCI2vzlIKLB9AdLCtF5cD";
 
 // 🔥 PAYPAL PLAN IDS (From Developer Dashboard)
-// STEP 7: Replace these with your actual Plan IDs from PayPal Dashboard
 export const PAYPAL_PLAN_IDS = {
     PRO_MONTHLY: 'P-5ML4271244454362WXSMG7TQ', // Example Sandbox ID
     PRO_YEARLY: 'P-YEARLY_PLAN_ID_HERE'

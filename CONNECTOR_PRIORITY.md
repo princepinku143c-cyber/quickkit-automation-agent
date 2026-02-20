@@ -35,3 +35,4 @@ This priority list is based on expected workflow impact, failure blast-radius, a
 ## Current status
 - Validation and retry defaults are implemented at framework level.
 - Remaining connector-specific work should follow P0 -> P1 -> P2 order.
+- Remaining connector-specific work should follow P0 -> P1 -> P2 order.
