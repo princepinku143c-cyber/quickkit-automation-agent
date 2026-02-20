@@ -40,6 +40,10 @@ export default async function handler(req: any, res: any) {
         if (!origin) {
             return res.status(500).json({ error: 'Missing APP_BASE_URL/Origin for PayPal return URLs' });
         }
+
+        if (!origin) {
+            return res.status(500).json({ error: 'Missing APP_BASE_URL/Origin for PayPal return URLs' });
+        }
         const { amount, currency, userId } = req.body;
 
         // 1. Strict Input Validation
@@ -79,6 +83,9 @@ export default async function handler(req: any, res: any) {
                     amount: {
                         currency_code: normalizedCurrency,
                         value: (normalizedAmount / 100).toFixed(2) // Convert cents to dollars if needed, assuming input is smallest unit
+                    },
+                    custom_id: uid, // Attach User ID for Webhook tracking
+                    invoice_id: `NX-${uid}-${Date.now()}`
                     },
                     custom_id: uid, // Attach User ID for Webhook tracking
                     invoice_id: `NX-${uid}-${Date.now()}`

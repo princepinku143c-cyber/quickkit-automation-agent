@@ -365,6 +365,69 @@ export default async function handler(req: any, res: any) {
 
       console.log(`${LOG_PREFIX} Upgrade success User=${uid} Event=${eventType} PaymentId=${paymentId || 'N/A'}`);
     }
+        }
+
+        if (paymentDocRef) {
+          const paymentSnap = await tx.get(paymentDocRef);
+          if (paymentSnap.exists && paymentSnap.data()?.status === 'success') return true;
+        }
+
+        tx.set(userDocRef, {
+          plan: {
+            tier: 'PRO',
+            status: 'active',
+            provider: 'PAYPAL',
+            credits: 5000,
+            monthlyLimit: 5000,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            autoRenew: true,
+          },
+          tier: 'PRO',
+          status: 'active',
+          provider: 'PAYPAL',
+          credits: 5000,
+          monthlyLimit: 5000,
+          autoRenew: true,
+          lastPaymentId: paymentId,
+          updatedAt: Date.now(),
+          expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+        }, { merge: true });
+
+        if (paymentDocRef) {
+          tx.set(paymentDocRef, {
+            id: paymentId,
+            userId: uid,
+            gateway: 'PAYPAL',
+            amount,
+            currency,
+            status: 'success',
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            rawEventType: eventType,
+          }, { merge: true });
+        }
+
+        if (eventDocRef) {
+          tx.set(eventDocRef, {
+            id: `evt_${eventId}`,
+            userId: uid,
+            gateway: 'PAYPAL',
+            status: 'processed',
+            eventId,
+            eventType,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }
+
+        return false;
+      });
+
+      if (alreadyProcessed) {
+        console.log(`${LOG_PREFIX} Duplicate skipped EventId=${eventId || 'N/A'} PaymentId=${paymentId || 'N/A'}`);
+        return res.status(200).json({ received: true, duplicate: true });
+      }
+
+      console.log(`${LOG_PREFIX} Upgrade success User=${uid} Event=${eventType} PaymentId=${paymentId || 'N/A'}`);
+    }
       return res.status(200).json({ status: 'active', time: Date.now() });
   }
 
