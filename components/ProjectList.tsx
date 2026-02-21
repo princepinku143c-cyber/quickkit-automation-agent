@@ -54,7 +54,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onCreateProject, on
   };
 
   // LIMITS & STATS
-  const currentLimits = PLAN_LIMITS[userPlan];
+  const currentLimits = PLAN_LIMITS[userPlan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.FREE;
   const projectLimit = currentLimits.PROJECTS;
   const isLimitReached = projects.length >= projectLimit;
   

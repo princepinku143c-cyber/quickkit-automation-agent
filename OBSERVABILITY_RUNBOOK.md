@@ -31,4 +31,3 @@ Use this runbook when workflow runs appear stuck, payments are not upgrading, or
 2. Redeploy and re-run a sandbox payment.
 3. Confirm webhook 200 + payment doc + user tier update.
 4. Confirm frontend reflects updated plan state.
-4. Confirm frontend reflects updated plan state.

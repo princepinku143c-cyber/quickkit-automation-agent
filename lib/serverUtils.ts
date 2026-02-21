@@ -58,3 +58,25 @@ export async function requireAdmin(userId: string) {
     throw new Error("Access denied. Admin privileges required.");
   }
 }
+
+/**
+ * Validates a coupon code on the server.
+ */
+export async function validateCoupon(code: string, tier: string, currency: string) {
+    const cleanCode = code.toUpperCase().trim();
+    const snapshot = await db.collection('coupons')
+        .where('code', '==', cleanCode)
+        .where('active', '==', true)
+        .get();
+
+    if (snapshot.empty) return null;
+
+    const promo = snapshot.docs[0].data();
+    
+    if (promo.expiresAt && promo.expiresAt < Date.now()) return null;
+    if (promo.used >= promo.maxUses) return null;
+    if (!promo.validPlans.includes(tier)) return null;
+    if (promo.currency && promo.currency !== currency) return null;
+
+    return promo;
+}

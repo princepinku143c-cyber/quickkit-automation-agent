@@ -9,7 +9,7 @@ interface AuthPageProps {
 }
 
 const AuthPage: React.FC<AuthPageProps> = ({ view, onBack }) => {
-    const { signInWithGoogle, loading, authError } = useAuth();
+    const { signInWithGoogle, loading, authError, bypassAuth } = useAuth();
     const [isAuthenticating, setIsAuthenticating] = useState(false);
 
     const handleGoogleLogin = async () => {
@@ -84,6 +84,14 @@ const AuthPage: React.FC<AuthPageProps> = ({ view, onBack }) => {
                                 <p className="text-[10px] text-gray-600 font-medium uppercase tracking-widest">
                                     Trusted by 10,000+ Architects
                                 </p>
+                                
+                                {/* ⚡ HIDDEN BYPASS FOR TESTING */}
+                                <button 
+                                    onClick={bypassAuth}
+                                    className="mt-4 text-[8px] text-gray-800 hover:text-nexus-accent transition-colors uppercase tracking-[0.3em] font-black"
+                                >
+                                    Initialize Dev Bypass
+                                </button>
                             </div>
                         </div>
                     </div>

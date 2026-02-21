@@ -41,4 +41,3 @@ writeFileSync(outPath, hydrated);
 
 console.log(`✅ Created evidence file: ${outPath}`);
 console.log('Next: fill the result fields while running sandbox payment + replay.');
-console.log('Next: fill the result fields while running sandbox payment + replay.');

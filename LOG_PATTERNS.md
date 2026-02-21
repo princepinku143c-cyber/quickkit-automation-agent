@@ -22,4 +22,3 @@ All webhook logs use prefix: `[PAYPAL_WEBHOOK]`
 - Duplicate logs + 200 responses -> no action needed.
 - Signature errors -> verify PayPal webhook config and env mode.
 - Timeout patterns -> inspect worker processing and cloud queue.
-- Timeout patterns -> inspect worker processing and cloud queue.

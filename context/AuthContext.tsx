@@ -10,6 +10,7 @@ import { auth } from '../services/firebase';
 import { ensureUserProfile } from '../services/userService';
 import { triggerGoogleLogin, triggerLogout } from '../services/authService';
 import { Zap } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 interface AuthContextType {
   user: firebase.User | null;
@@ -18,6 +19,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   authError: string | null;
   isDevMode: boolean;
+  bypassAuth: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -98,6 +100,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // --- 4. BYPASS ACTION (FOR TESTING) ---
+  const bypassAuth = () => {
+    const mockUser = {
+        uid: 'dev-bypass-user-999',
+        email: 'tester@nexusstream.site',
+        displayName: 'Nexus Tester',
+        photoURL: 'https://picsum.photos/200'
+    } as any;
+    
+    setUser(mockUser);
+    setIsDevMode(true);
+    localStorage.setItem('nexus_active_session', 'dev-bypass');
+    localStorage.setItem('nexus_user_plan', 'ELITE');
+    toast.success("DEV BYPASS ACTIVE: ELITE ACCESS GRANTED");
+  };
+
   if (loading) {
       return (
           <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-white font-sans">
@@ -113,7 +131,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
   
   return (
-    <AuthContext.Provider value={{ user, loading, signInWithGoogle, logout, authError, isDevMode }}>
+    <AuthContext.Provider value={{ user, loading, signInWithGoogle, logout, authError, isDevMode, bypassAuth }}>
       {children}
     </AuthContext.Provider>
   );

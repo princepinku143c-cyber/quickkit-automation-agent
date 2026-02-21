@@ -70,7 +70,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBl
 
   // 🔥 CALCULATE USAGE STATS FOR WIDGET
   const currentTier = userPlan?.tier || 'FREE';
-  const limits = PLAN_LIMITS[currentTier];
+  const limits = PLAN_LIMITS[currentTier as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.FREE;
   const runsUsed = userPlan?.usage?.runs || 0;
   const runsTotal = limits.RUNS;
   const usagePercent = Math.min((runsUsed / runsTotal) * 100, 100);

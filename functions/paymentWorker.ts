@@ -1,6 +1,6 @@
 
 import * as admin from 'firebase-admin';
-import * as functions from 'firebase-functions/v1';
+import * as functions from 'firebase-functions';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 

@@ -38,4 +38,3 @@ Use this template to submit proof after running the replay flow.
 - PayPal delivery screenshot:
 - Vercel log screenshot:
 - Firestore doc screenshot:
-- Firestore doc screenshot:

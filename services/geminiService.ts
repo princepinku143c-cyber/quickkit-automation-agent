@@ -43,7 +43,7 @@ const getActiveGeminiKey = (): string => {
     } catch (e) {}
     
     // 2. Fallback to Env
-    return process.env.API_KEY || "";
+    return process.env.GEMINI_API_KEY || process.env.API_KEY || "";
 };
 
 export const validateCredential = async (type: string, apiKey: string): Promise<ValidationResult> => {

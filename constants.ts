@@ -59,6 +59,15 @@ export const PLAN_LIMITS = {
     CLOUD_SAVE: true,
     LABEL: 'UltraPro',
     PRICE: '$99'
+  },
+  ELITE: {
+    PROJECTS: 9999,
+    RUNS: 999999,
+    API_CALLS: 999999,
+    MAX_NODES: 9999,
+    CLOUD_SAVE: true,
+    LABEL: 'Elite (Dev)',
+    PRICE: 'FREE'
   }
 };
 

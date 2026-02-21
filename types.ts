@@ -130,7 +130,7 @@ export enum NexusSubtype {
   CUSTOM_AI_NODE = 'CUSTOM_AI_NODE' 
 }
 
-export type PlanTier = 'FREE' | 'PRO' | 'BUSINESS';
+export type PlanTier = 'FREE' | 'PRO' | 'BUSINESS' | 'ELITE';
 export type Region = 'IN' | 'GLOBAL';
 export type AppTheme = 'cyber' | 'nova' | 'matrix' | 'minimal';
 export type ProjectStatus = 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED';

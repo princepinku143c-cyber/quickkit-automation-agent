@@ -101,13 +101,20 @@ async function _processUsageTransaction(
             const userData = doc.data() as UserPlan;
             const { effectiveTier, updates } = _resolveEffectivePlan(userData);
 
-            // 1. Apply Lazy Updates (Downgrade or Monthly Reset)
+            // 1. Ensure usage object exists if we are about to increment it
+            if (!userData.usage) {
+                transaction.set(userRef, { 
+                    usage: { workflows: 0, runs: 0, apiCalls: 0 } 
+                }, { merge: true });
+            }
+
+            // 2. Apply Lazy Updates (Downgrade or Monthly Reset)
             if (Object.keys(updates).length > 0) {
                 transaction.update(userRef, updates);
             }
 
-            // 2. Bypass for Business (Unlimited)
-            if (effectiveTier === 'BUSINESS') {
+            // 3. Bypass for Business (Unlimited)
+            if (effectiveTier === 'BUSINESS' || effectiveTier === 'ELITE') {
                 transaction.update(userRef, { 
                     [`usage.${metric}`]: firebase.firestore.FieldValue.increment(cost) 
                 });
@@ -165,7 +172,7 @@ export const verifyProjectCreationLimit = async (uid: string): Promise<void> => 
     const userData = userDoc.data() as UserPlan;
     const { effectiveTier } = _resolveEffectivePlan(userData);
 
-    if (effectiveTier === 'BUSINESS') return;
+    if (effectiveTier === 'BUSINESS' || effectiveTier === 'ELITE') return;
 
     const limit = PLAN_LIMITS[effectiveTier as keyof typeof PLAN_LIMITS]?.PROJECTS || 2;
     const current = userData.usage?.workflows || 0;
@@ -186,7 +193,7 @@ export const checkRunLimit = async (uid: string): Promise<boolean> => {
 // Client-Side Visual Checks
 export const canCreateWorkflow = (userPlan: UserPlan, currentProjectCount: number): boolean => {
     const { effectiveTier } = _resolveEffectivePlan(userPlan);
-    if (effectiveTier === 'BUSINESS') return true;
+    if (effectiveTier === 'BUSINESS' || effectiveTier === 'ELITE') return true;
     const limit = PLAN_LIMITS[effectiveTier as keyof typeof PLAN_LIMITS]?.PROJECTS || 2;
     const usage = userPlan.usage?.workflows ?? currentProjectCount;
     return usage < limit;
@@ -194,7 +201,7 @@ export const canCreateWorkflow = (userPlan: UserPlan, currentProjectCount: numbe
 
 export const canAddNode = (userPlan: UserPlan, currentNodeCount: number): boolean => {
     const { effectiveTier } = _resolveEffectivePlan(userPlan);
-    if (effectiveTier === 'BUSINESS') return true;
+    if (effectiveTier === 'BUSINESS' || effectiveTier === 'ELITE') return true;
     const limit = PLAN_LIMITS[effectiveTier as keyof typeof PLAN_LIMITS]?.MAX_NODES || 10;
     return currentNodeCount < limit;
 };

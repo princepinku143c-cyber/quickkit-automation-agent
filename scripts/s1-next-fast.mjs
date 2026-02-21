@@ -63,4 +63,3 @@ console.log('1. Complete one sandbox payment from app UI.');
 console.log('2. Replay same webhook event from PayPal dashboard.');
 console.log('3. Fill generated evidence file and mark all 5 checks pass.');
 console.log('4. Update SET_PROGRESS.md to mark S1 done.');
-console.log('4. Update SET_PROGRESS.md to mark S1 done.');

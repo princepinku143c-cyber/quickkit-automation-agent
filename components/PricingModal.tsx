@@ -1,156 +1,338 @@
-
-import React, { useState, useEffect } from 'react';
-import { Check, X, Crown, ShieldCheck, Zap, AlertTriangle, ArrowRight, Tag, RefreshCcw, Lock, Globe, Ticket, PartyPopper, Loader2 } from 'lucide-react';
-import { Region, PlanTier, UserPlan, CouponData } from '../types';
-import { useAuth } from '../context/AuthContext';
-import { PaymentGateway } from '../services/paymentGateway';
-import LegalModal from './LegalModal';
-import { PLAN_LIMITS } from '../constants';
-import { toast } from 'react-hot-toast';
+import React, { useState, useMemo } from "react";
+import { Crown, Zap, ArrowRight, ShieldCheck, Loader2, X, Globe, CreditCard, Ticket } from "lucide-react";
+import { PaymentGateway } from "../services/paymentGateway";
+import { CouponService } from "../services/couponService";
+import { toast } from "react-hot-toast";
+import { useAuth } from "../context/AuthContext";
+import { AdminPromo } from "../types";
 
 interface PricingModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onUpgrade?: (plan: UserPlan) => void;
+  onUpgrade?: any;
   triggerReason?: string;
 }
 
-type ModalState = 'SELECTION' | 'SUMMARY' | 'PROCESSING';
-
-const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgrade, triggerReason }) => {
+const PricingModal: React.FC<PricingModalProps> = ({
+  isOpen,
+  onClose,
+  triggerReason
+}) => {
   const { user } = useAuth();
-  const [uiState, setUiState] = useState<ModalState>('SELECTION');
-  const [isLegalOpen, setIsLegalOpen] = useState(false);
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
-  
-  const [region, setRegion] = useState<Region>('GLOBAL');
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
-  const [selectedPaidTier, setSelectedPaidTier] = useState<PlanTier>('PRO');
-  
-  const [isLoading, setIsLoading] = useState(false);
+  const [step, setStep] = useState<"plans" | "checkout">("plans");
+  const [selected, setSelected] = useState<"PRO" | "BUSINESS" | null>(null);
+  const [currency, setCurrency] = useState<"USD" | "INR">("USD");
+  const [agreed, setAgreed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<AdminPromo | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
 
-  // Prices
-  const prices = {
-    IN: { PRO: { monthly: 2499, yearly: 24990 }, BUSINESS: { monthly: 4999, yearly: 49990 }, symbol: '₹' },
-    GLOBAL: { PRO: { monthly: 49, yearly: 490 }, BUSINESS: { monthly: 99, yearly: 990 }, symbol: '$' }
-  };
-
-  useEffect(() => {
-    if (isOpen) {
-        setUiState('SELECTION');
-        setIsLoading(false);
-        setAgreedToTerms(false);
+  const planData = useMemo(() => ({
+    PRO: {
+      basePrice: currency === 'USD' ? 49 : 3999,
+      symbol: currency === 'USD' ? '$' : '₹',
+      glow: "shadow-[0_0_40px_rgba(0,255,200,0.4)] border-cyan-400"
+    },
+    BUSINESS: {
+      basePrice: currency === 'USD' ? 99 : 8999,
+      symbol: currency === 'USD' ? '$' : '₹',
+      glow: "shadow-[0_0_40px_rgba(255,200,0,0.4)] border-yellow-400"
     }
-  }, [isOpen]);
+  }), [currency]);
 
-  const handlePayPalUpgrade = async () => {
-      if (!agreedToTerms) { 
-          toast.error("Please agree to the Terms of Service."); 
-          return; 
-      }
-      
-      setIsLoading(true);
-      setUiState('PROCESSING');
-
-      try {
-          // 1. Call Backend
-          const order = await PaymentGateway.createPayPalOrder(selectedPaidTier, billingCycle);
-          
-          if (order.approvalUrl) {
-              // 2. Redirect to PayPal
-              window.location.href = order.approvalUrl;
-          } else {
-              throw new Error("Invalid response from server");
-          }
-
-      } catch (err: any) {
-          console.error("Payment Start Error:", err);
-          toast.error(err.message || "Failed to initialize payment.");
-          setUiState('SUMMARY'); // Go back to summary
-          setIsLoading(false);
-      }
-  };
+  const finalPrice = useMemo(() => {
+    if (!selected) return 0;
+    const base = planData[selected].basePrice;
+    if (!appliedCoupon) return base;
+    return CouponService.calculateDiscount(base, appliedCoupon);
+  }, [selected, planData, appliedCoupon]);
 
   if (!isOpen) return null;
 
-  const currentPrices = prices[region];
-  const priceObj = currentPrices[selectedPaidTier];
-  const amount = billingCycle === 'monthly' ? priceObj.monthly : priceObj.yearly;
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim() || !selected) return;
+    setIsValidating(true);
+    try {
+      const promo = await CouponService.validate(couponCode, selected, currency);
+      setAppliedCoupon(promo);
+      toast.success("Coupon Applied!");
+    } catch (e: any) {
+      toast.error(e.message || "Invalid Coupon");
+      setAppliedCoupon(null);
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  const handlePayment = async () => {
+      if (!selected) return;
+      if (!agreed) {
+          toast.error("Please agree to the Terms.");
+          return;
+      }
+      
+      setLoading(true);
+      try {
+          if (currency === 'USD') {
+              // --- PAYPAL FLOW (Global) ---
+              const res = await PaymentGateway.createPayPalOrder(selected, 'monthly', appliedCoupon?.code);
+              if (res.approvalUrl) {
+                  window.location.href = res.approvalUrl;
+              } else {
+                  throw new Error("No approval URL");
+              }
+          } else {
+              // --- RAZORPAY FLOW (India) ---
+              const region = 'IN';
+              
+              // 1. Create Order
+              const order = await PaymentGateway.createOrder(selected, 'monthly', region, appliedCoupon?.code);
+              
+              // 2. Open Modal
+              await PaymentGateway.openRazorpay(
+                  order,
+                  user?.email || 'guest@nexusstream.ai',
+                  async (response: any) => {
+                      // Success Callback
+                      toast.success("Payment Successful! Verifying...");
+                      const valid = await PaymentGateway.verifyBackend(response);
+                      if (valid) {
+                          window.location.reload(); 
+                      } else {
+                          toast.error("Verification failed. Contact support.");
+                      }
+                      setLoading(false);
+                  },
+                  (error: any) => {
+                      console.error(error);
+                      toast.error("Payment Cancelled");
+                      setLoading(false);
+                  }
+              );
+          }
+      } catch (e: any) {
+          console.error(e);
+          toast.error("Payment initialization failed. Please try again.");
+          setLoading(false);
+      }
+  };
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/95 backdrop-blur-3xl animate-in fade-in duration-300">
-      <LegalModal isOpen={isLegalOpen} onClose={() => setIsLegalOpen(false)} />
-      
-      <div className="w-full max-w-6xl bg-nexus-900 border border-nexus-800 rounded-3xl shadow-2xl flex flex-col max-h-[95vh] overflow-hidden relative">
-        
-        {/* PROCESSING OVERLAY */}
-        {uiState === 'PROCESSING' && (
-            <div className="absolute inset-0 z-50 bg-black/90 flex flex-col items-center justify-center text-center p-8">
-                <Loader2 size={48} className="text-nexus-accent animate-spin mb-4" />
-                <h3 className="text-xl font-bold text-white uppercase tracking-widest">Connecting to PayPal...</h3>
-                <p className="text-gray-400 text-sm mt-2">Redirecting you to secure checkout.</p>
-            </div>
-        )}
+    <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in duration-200">
+
+      <div className="w-full max-w-[820px] bg-[#050505] border border-white/10 rounded-3xl p-8 md:p-12 relative shadow-2xl">
 
         {/* HEADER */}
-        <div className="p-6 border-b border-nexus-800 flex justify-between items-center bg-nexus-950">
-           <div className="flex items-center gap-3">
-              <div className="p-2 bg-nexus-accent/10 rounded-lg"><Crown size={24} className="text-nexus-accent" /></div>
-              <h2 className="text-xl font-black text-white uppercase tracking-wider">Upgrade Plan</h2>
-           </div>
-           <button onClick={onClose} className="p-2 text-gray-500 hover:text-white"><X size={24} /></button>
+        <div className="flex justify-between items-center mb-10">
+          <div className="flex items-center gap-4">
+            <Crown className="text-cyan-400" size={26} />
+            <div>
+                <h2 className="text-2xl font-black tracking-widest text-white leading-none">
+                UPGRADE PLAN
+                </h2>
+                {triggerReason && <p className="text-xs text-red-400 mt-1 font-bold">{triggerReason}</p>}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+              {/* CURRENCY TOGGLE */}
+              <div className="flex bg-nexus-900 p-1 rounded-lg border border-nexus-800">
+                  <button 
+                    onClick={() => setCurrency('USD')}
+                    className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition-all ${currency === 'USD' ? 'bg-white text-black shadow' : 'text-gray-500 hover:text-white'}`}
+                  >
+                      USD ($)
+                  </button>
+                  <button 
+                    onClick={() => setCurrency('INR')}
+                    className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition-all ${currency === 'INR' ? 'bg-white text-black shadow' : 'text-gray-500 hover:text-white'}`}
+                  >
+                      INR (₹)
+                  </button>
+              </div>
+
+              <button
+                onClick={onClose}
+                className="text-gray-400 hover:text-white p-2 hover:bg-white/10 rounded-full transition-all"
+              >
+                <X size={24} />
+              </button>
+          </div>
         </div>
 
-        <div className="p-6 overflow-y-auto bg-[#050505] flex-1">
-          {uiState === 'SELECTION' ? (
-            <div className="space-y-8">
-                {/* Simplified for brevity - Imagine Plan Selection Grid Here */}
-                <div className="flex justify-center gap-4">
-                    <button onClick={() => setSelectedPaidTier('PRO')} className={`p-8 border rounded-2xl w-64 ${selectedPaidTier === 'PRO' ? 'border-nexus-accent bg-nexus-accent/10' : 'border-nexus-800'}`}>
-                        <div className="text-2xl font-bold text-white">PRO</div>
-                        <div className="text-4xl mt-2 font-black">{currentPrices.symbol}{currentPrices.PRO.monthly}</div>
-                    </button>
-                    <button onClick={() => setSelectedPaidTier('BUSINESS')} className={`p-8 border rounded-2xl w-64 ${selectedPaidTier === 'BUSINESS' ? 'border-nexus-wire bg-nexus-wire/10' : 'border-nexus-800'}`}>
-                        <div className="text-2xl font-bold text-white">BUSINESS</div>
-                        <div className="text-4xl mt-2 font-black">{currentPrices.symbol}{currentPrices.BUSINESS.monthly}</div>
-                    </button>
+        {/* STEP 1 — PLAN SELECTION */}
+        {step === "plans" && (
+          <div className="animate-in slide-in-from-right duration-300">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+
+              {/* PRO */}
+              <div
+                onClick={() => setSelected("PRO")}
+                className={`cursor-pointer p-8 md:p-10 rounded-3xl border transition-all duration-300 bg-[#0a0a0a] 
+                ${
+                  selected === "PRO"
+                    ? planData.PRO.glow
+                    : "border-white/10 hover:border-cyan-500 hover:shadow-[0_0_20px_rgba(0,255,200,0.2)]"
+                }`}
+              >
+                <div className="flex justify-between items-start mb-4">
+                    <h3 className="text-xl font-bold text-white">PRO</h3>
+                    {selected === "PRO" && <Zap size={20} className="text-cyan-400 fill-current"/>}
                 </div>
-                <div className="text-center">
-                    <button onClick={() => setUiState('SUMMARY')} className="px-8 py-3 bg-nexus-accent text-black font-bold rounded-xl">Continue</button>
+                <p className="text-5xl font-black text-white mb-4">
+                  {planData.PRO.symbol}{planData.PRO.basePrice}
+                </p>
+                <ul className="text-gray-400 space-y-2 text-sm">
+                  <li>• 5,000 Runs / mo</li>
+                  <li>• 100 Active Nodes</li>
+                  <li>• Cloud Saves</li>
+                </ul>
+              </div>
+
+              {/* BUSINESS */}
+              <div
+                onClick={() => setSelected("BUSINESS")}
+                className={`cursor-pointer p-8 md:p-10 rounded-3xl border transition-all duration-300 bg-[#0a0a0a] 
+                ${
+                  selected === "BUSINESS"
+                    ? planData.BUSINESS.glow
+                    : "border-white/10 hover:border-yellow-400 hover:shadow-[0_0_20px_rgba(255,200,0,0.2)]"
+                }`}
+              >
+                <div className="flex justify-between items-start mb-4">
+                    <h3 className="text-xl font-bold text-white">BUSINESS</h3>
+                    {selected === "BUSINESS" && <Crown size={20} className="text-yellow-400 fill-current"/>}
+                </div>
+                <p className="text-5xl font-black text-white mb-4">
+                  {planData.BUSINESS.symbol}{planData.BUSINESS.basePrice}
+                </p>
+                <ul className="text-gray-400 space-y-2 text-sm">
+                  <li>• Unlimited Runs</li>
+                  <li>• 999 Active Nodes</li>
+                  <li>• Priority Support</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="text-center">
+              <button
+                disabled={!selected}
+                onClick={() => setStep("checkout")}
+                className={`px-12 py-4 rounded-xl font-bold tracking-widest transition-all duration-300 text-sm 
+                ${
+                  selected
+                    ? "bg-gradient-to-r from-cyan-400 to-blue-500 text-black hover:scale-105 shadow-lg"
+                    : "bg-gray-800 text-gray-500 cursor-not-allowed"
+                }`}
+              >
+                CONTINUE
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 2 — CHECKOUT */}
+        {step === "checkout" && selected && (
+          <div className="max-w-md mx-auto text-center animate-in slide-in-from-right duration-300">
+
+            <div className="mb-8 p-6 bg-white/5 rounded-2xl border border-white/10">
+                <p className="text-xs text-gray-400 tracking-widest mb-2 uppercase font-bold">
+                Total Due Now
+                </p>
+
+                <h3 className={`text-6xl font-black mb-2 ${selected === 'PRO' ? 'text-cyan-400' : 'text-yellow-400'}`}>
+                {planData[selected].symbol}{finalPrice}
+                </h3>
+
+                {appliedCoupon && (
+                    <div className="flex items-center justify-center gap-2 text-nexus-accent text-[10px] font-bold uppercase mb-2">
+                        <Ticket size={12} />
+                        Coupon Applied: {appliedCoupon.code} (-{appliedCoupon.type === 'PERCENT' ? `${appliedCoupon.value}%` : `${planData[selected].symbol}${appliedCoupon.value}`})
+                        <button onClick={() => { setAppliedCoupon(null); setCouponCode(""); }} className="ml-1 text-red-400 hover:text-red-300">Remove</button>
+                    </div>
+                )}
+
+                <p className="text-gray-400 text-sm">
+                {selected} Plan (Monthly Subscription)
+                </p>
+                
+                <div className="mt-4 flex justify-center gap-2">
+                    <span className="text-[10px] bg-nexus-900 border border-white/10 px-2 py-1 rounded text-gray-400 font-bold uppercase">
+                        Gateway: {currency === 'USD' ? 'PayPal' : 'Razorpay'}
+                    </span>
                 </div>
             </div>
-          ) : (
-             <div className="max-w-md mx-auto space-y-6">
-                <div className="bg-nexus-900/50 border border-nexus-800 p-8 rounded-[32px]">
-                    <div className="text-center mb-6">
-                        <div className="text-xs text-gray-500 uppercase tracking-widest mb-1">Total Due</div>
-                        <div className="text-4xl font-black text-white">{currentPrices.symbol}{amount}</div>
-                        <div className="text-sm text-nexus-accent mt-1">{selectedPaidTier} Plan ({billingCycle})</div>
-                    </div>
 
-                    <div className="flex items-center gap-4 p-4 bg-black/40 rounded-2xl border border-white/5 cursor-pointer mb-6" onClick={() => setAgreedToTerms(!agreedToTerms)}>
-                        <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${agreedToTerms ? 'bg-nexus-accent border-nexus-accent' : 'border-white/10'}`}>
-                            {agreedToTerms && <Check size={14} className="text-black font-black"/>}
-                        </div>
-                        <div className="text-[11px] text-gray-400">
-                            I agree to the <button className="text-white hover:underline">Terms of Service</button>.
-                        </div>
-                    </div>
-
+            {/* COUPON INPUT */}
+            {!appliedCoupon && (
+                <div className="mb-8 flex gap-2">
+                    <input 
+                        type="text" 
+                        value={couponCode}
+                        onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                        placeholder="COUPON CODE"
+                        className="flex-1 bg-nexus-900 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-cyan-400 outline-none uppercase font-bold"
+                    />
                     <button 
-                        onClick={handlePayPalUpgrade} 
-                        disabled={!agreedToTerms || isLoading} 
-                        className="w-full py-4 bg-blue-600 text-white rounded-2xl text-[12px] font-black uppercase tracking-[0.2em] hover:bg-blue-500 transition-all flex items-center justify-center gap-3 disabled:opacity-50 shadow-2xl"
+                        onClick={handleApplyCoupon}
+                        disabled={isValidating || !couponCode.trim()}
+                        className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50"
                     >
-                        {isLoading ? <Loader2 className="animate-spin"/> : <ArrowRight size={18}/>}
-                        Pay with PayPal
+                        {isValidating ? <Loader2 size={14} className="animate-spin" /> : "APPLY"}
                     </button>
-                    
-                    <button onClick={() => setUiState('SELECTION')} className="w-full mt-4 text-xs text-gray-500 hover:text-white">Back to Plans</button>
                 </div>
-             </div>
-          )}
-        </div>
+            )}
+
+            {/* TERMS */}
+            <div className="flex justify-center items-center gap-3 mb-8 cursor-pointer group" onClick={() => setAgreed(!agreed)}>
+              <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${agreed ? 'bg-cyan-400 border-cyan-400' : 'border-gray-600 group-hover:border-gray-400'}`}>
+                  {agreed && <ArrowRight size={12} className="text-black"/>}
+              </div>
+              <span className="text-sm text-gray-400 group-hover:text-white transition-colors">
+                I agree to the Terms of Service
+              </span>
+            </div>
+
+            {/* PAY BUTTON */}
+            <button
+              disabled={!agreed || loading}
+              onClick={handlePayment}
+              className={`w-full py-4 rounded-xl font-bold tracking-widest transition-all duration-300 flex items-center justify-center gap-3 
+              ${
+                agreed && !loading
+                  ? "bg-gradient-to-r from-cyan-400 to-blue-500 text-black shadow-[0_0_30px_rgba(0,255,200,0.4)] hover:scale-105 hover:shadow-[0_0_50px_rgba(0,255,200,0.6)]"
+                  : "bg-gray-800 text-gray-500 cursor-not-allowed"
+              }`}
+            >
+              {loading ? (
+                  <Loader2 size={20} className="animate-spin" />
+              ) : (
+                  <>
+                    {currency === 'USD' ? <Globe size={18} /> : <CreditCard size={18} />}
+                    PAY WITH {currency === 'USD' ? 'PAYPAL' : 'RAZORPAY'}
+                    <ArrowRight size={18} />
+                  </>
+              )}
+            </button>
+
+            {/* BACK BUTTON */}
+            <button
+              onClick={() => setStep("plans")}
+              disabled={loading}
+              className="mt-6 text-gray-500 hover:text-white text-xs font-bold uppercase tracking-widest transition-colors"
+            >
+              Back to Plans
+            </button>
+
+            {/* SECURITY BADGE */}
+            <div className="flex justify-center items-center gap-2 mt-8 text-[10px] text-gray-600 font-bold uppercase tracking-wider">
+              <ShieldCheck size={12} />
+              Secure Payment via {currency === 'USD' ? 'PayPal' : 'Razorpay'} • Encrypted Checkout
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
