@@ -31,7 +31,7 @@ export const callAIWithTimeout = async <T>(apiCall: () => Promise<T>, timeoutMs:
 };
 
 // --- KEY RECOVERY UTILITY (Vault Priority) ---
-const getActiveGeminiKey = (): string => {
+export const getActiveGeminiKey = (): string => {
     try {
         // 1. Check Vault (User defined)
         const stored = localStorage.getItem('nexus_credentials');

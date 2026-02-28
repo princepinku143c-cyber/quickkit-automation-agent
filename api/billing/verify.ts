@@ -34,7 +34,7 @@ export default async function handler(req: any, res: any) {
         
         // Note: For client verification, the secret used is the KEY_SECRET, not Webhook Secret.
         // Assuming RZP_KEY_SECRET is available in env.
-        const keySecret = process.env.RZP_KEY_SECRET;
+        const keySecret = process.env.RZP_KEY_SECRET || process.env.RAZORPAY_KEY_SECRET;
         
         if (keySecret) {
             const generated_signature = crypto.createHmac('sha256', keySecret)

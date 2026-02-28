@@ -54,7 +54,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     if (!input.trim() || isLoading) return;
 
     // --- 🔥 REAL USAGE GUARD (CREDIT CONSUMPTION) ---
-    if (user) {
+    if (user && user.uid !== 'dev-bypass-user-999') {
         const hasCredit = await checkAndConsumeCredit(user.uid, 1); // Cost = 1 credit
         if (!hasCredit) {
             setMessages(prev => [...prev, { 
@@ -121,7 +121,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   const handleAnalysis = async (intent: 'VALIDATE' | 'EXPLAIN' | 'OPTIMIZE') => {
       // Analysis consumes quota
-      if (user) {
+      if (user && user.uid !== 'dev-bypass-user-999') {
           const hasCredit = await checkAndConsumeCredit(user.uid, 1);
           if (!hasCredit) {
               setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', content: `🔒 Insufficient Credits.`, timestamp: Date.now() }]);

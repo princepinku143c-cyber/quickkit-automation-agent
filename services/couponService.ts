@@ -7,9 +7,25 @@ export class CouponService {
      * Validates a coupon code against Firestore
      */
     public static async validate(code: string, tier: PlanTier, currency: 'USD' | 'INR'): Promise<AdminPromo> {
-        if (!db) throw new Error("Database Offline");
-        
         const cleanCode = code.toUpperCase().trim();
+
+        // 🔥 TEMPORARY TEST PROMO: 100% OFF
+        if (cleanCode === 'PRINCEPINKU143') {
+            return {
+                code: 'PRINCEPINKU143',
+                type: 'PERCENT',
+                value: 100,
+                active: true,
+                used: 0,
+                maxUses: 9999,
+                validPlans: ['PRO', 'BUSINESS'],
+                currency: currency,
+                expiresAt: Date.now() + (7 * 24 * 60 * 60 * 1000), // 7 days
+                createdAt: Date.now()
+            };
+        }
+
+        if (!db) throw new Error("Database Offline");
         const snapshot = await db.collection('coupons')
             .where('code', '==', cleanCode)
             .where('active', '==', true)

@@ -1,6 +1,6 @@
 
 import * as admin from 'firebase-admin';
-import * as functions from 'firebase-functions';
+import * as functions from 'firebase-functions/v1';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
@@ -96,7 +96,7 @@ export const verifyPayment = functions.https.onCall(async (data, context) => {
         await processSuccessfulPayment(context.auth!.uid, 'RAZORPAY', paymentId, { 
             tier: orderData?.plan, 
             type: orderData?.type || 'SUBSCRIPTION',
-            credits: orderData?.metadata?.credits
+            credits: orderData?.credits
         });
 
         await orderDoc.ref.update({
@@ -130,6 +130,7 @@ export const createOrder = functions.https.onCall(async (data, context) => {
             gateway: 'RAZORPAY',
             type: type || 'SUBSCRIPTION',
             plan: tier,
+            credits: credits, // Store credits for addon packs
             amount: amount,
             currency: currency,
             status: 'created',

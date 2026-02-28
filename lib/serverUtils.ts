@@ -64,6 +64,22 @@ export async function requireAdmin(userId: string) {
  */
 export async function validateCoupon(code: string, tier: string, currency: string) {
     const cleanCode = code.toUpperCase().trim();
+
+    // 🔥 TEMPORARY TEST PROMO: 100% OFF
+    if (cleanCode === 'PRINCEPINKU143') {
+        return {
+            code: 'PRINCEPINKU143',
+            type: 'PERCENT',
+            value: 100,
+            active: true,
+            used: 0,
+            maxUses: 9999,
+            validPlans: ['PRO', 'BUSINESS'],
+            currency: currency,
+            expiresAt: Date.now() + (7 * 24 * 60 * 60 * 1000) // 7 days
+        };
+    }
+
     const snapshot = await db.collection('coupons')
         .where('code', '==', cleanCode)
         .where('active', '==', true)

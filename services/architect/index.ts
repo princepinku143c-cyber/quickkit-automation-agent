@@ -7,7 +7,7 @@ import { ArchitectResponse } from './types';
 import { validateGraph, simulatePatch } from './validator';
 import { findSimilarWorkflows } from '../memoryService';
 import { getArchitectMemories } from '../cloudStore';
-import { callAIWithTimeout } from '../geminiService';
+import { callAIWithTimeout, getActiveGeminiKey } from '../geminiService';
 import { safeJsonParse, validateArchitectResponse } from './responseParser';
 import { AI_MODELS } from '../../constants';
 
@@ -50,10 +50,22 @@ export const processArchitectRequest = async (
 
     const baseInstruction = `${ARCHITECT_PERSONA}\n\nTOOLS:\n${toolsContext}\n\nCANVAS_STATE:\n${canvasState}\n\n${learnedPatterns}`;
     
-    // 🔥 ENFORCED STRATEGY: Architect uses Pro for reasoning
-    const model = AI_MODELS.ARCHITECT;
+    // 🔥 SMART ROUTING ENGINE: Decide between Pro (Intelligence) and Flash (Cost/Speed)
+    // We analyze the request complexity to save costs.
+    const isComplexRequest = 
+        userRequest.length > 600 || 
+        currentNexuses.length > 12 || 
+        history.length > 6 ||
+        (userRequest.toLowerCase().includes('complex') && userRequest.length > 200) ||
+        userRequest.toLowerCase().includes('deep reasoning') ||
+        userRequest.toLowerCase().includes('refactor') ||
+        userRequest.toLowerCase().includes('optimization');
+
+    const model = isComplexRequest ? AI_MODELS.ARCHITECT : AI_MODELS.RUNTIME;
     
-    const client = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    console.log(`[Architect] Routing to ${model} (Complexity: ${isComplexRequest ? 'HIGH' : 'LOW'})`);
+    
+    const client = new GoogleGenAI({ apiKey: getActiveGeminiKey() });
 
     try {
         // 1. CALL WITH TIMEOUT (15s)
@@ -69,7 +81,7 @@ export const processArchitectRequest = async (
             ],
             config: { 
                 temperature: 0.2,
-                thinkingConfig: { thinkingBudget: 4000 } // High budget for structural integrity
+                ...(isComplexRequest ? { thinkingConfig: { thinkingBudget: 4000 } } : {}) // Only use thinking for Pro
             }
         }), 18000); // 18s total budget including network
 

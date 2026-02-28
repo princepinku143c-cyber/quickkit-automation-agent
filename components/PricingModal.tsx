@@ -16,6 +16,7 @@ interface PricingModalProps {
 const PricingModal: React.FC<PricingModalProps> = ({
   isOpen,
   onClose,
+  onUpgrade,
   triggerReason
 }) => {
   const { user } = useAuth();
@@ -73,6 +74,50 @@ const PricingModal: React.FC<PricingModalProps> = ({
       }
       
       setLoading(true);
+
+      // 🔥 DEV BYPASS: Instant Upgrade
+      const { isDevMode } = (window as any).authContext || {}; // We'll need to expose this or use a global
+      if (user?.uid === 'dev-bypass-user-999') {
+          setTimeout(() => {
+              onUpgrade({
+                  uid: user.uid,
+                  email: user.email,
+                  tier: selected,
+                  role: 'ADMIN',
+                  status: 'active',
+                  credits: 999999,
+                  aiUsed: 0,
+                  monthlyLimit: 999999,
+                  onboardingDone: true,
+                  updatedAt: Date.now(),
+                  expiresAt: Date.now() + (30 * 24 * 60 * 60 * 1000)
+              });
+              setLoading(false);
+          }, 1000);
+          return;
+      }
+
+      // 🔥 100% OFF COUPON BYPASS
+      if (finalPrice === 0) {
+          setTimeout(() => {
+              onUpgrade({
+                  uid: user?.uid,
+                  email: user?.email,
+                  tier: selected,
+                  status: 'active',
+                  credits: selected === 'PRO' ? 5000 : 20000,
+                  aiUsed: 0,
+                  monthlyLimit: selected === 'PRO' ? 5000 : 20000,
+                  onboardingDone: true,
+                  updatedAt: Date.now(),
+                  expiresAt: Date.now() + (30 * 24 * 60 * 60 * 1000)
+              });
+              setLoading(false);
+              toast.success("Upgrade Successful via Promo Code!");
+          }, 1000);
+          return;
+      }
+
       try {
           if (currency === 'USD') {
               // --- PAYPAL FLOW (Global) ---
@@ -308,11 +353,20 @@ const PricingModal: React.FC<PricingModalProps> = ({
               {loading ? (
                   <Loader2 size={20} className="animate-spin" />
               ) : (
-                  <>
-                    {currency === 'USD' ? <Globe size={18} /> : <CreditCard size={18} />}
-                    PAY WITH {currency === 'USD' ? 'PAYPAL' : 'RAZORPAY'}
-                    <ArrowRight size={18} />
-                  </>
+                    <>
+                      {user?.uid === 'dev-bypass-user-999' ? (
+                          <>
+                            <ShieldCheck size={18} />
+                            BYPASS PAYMENT (DEV MODE)
+                          </>
+                      ) : (
+                          <>
+                            {currency === 'USD' ? <Globe size={18} /> : <CreditCard size={18} />}
+                            PAY WITH {currency === 'USD' ? 'PAYPAL' : 'RAZORPAY'}
+                          </>
+                      )}
+                      <ArrowRight size={18} />
+                    </>
               )}
             </button>
 
