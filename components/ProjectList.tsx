@@ -27,7 +27,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onCreateProject, on
   const [dbStatus, setDbStatus] = useState<'CONNECTED' | 'LOCKED' | 'OFFLINE'>('CONNECTED');
 
   useEffect(() => {
-      checkDbConnection().then(res => setDbStatus(res.status));
+      checkDbConnection().then(res => setDbStatus(res ? 'CONNECTED' : 'OFFLINE'));
   }, []);
 
   const filteredProjects = projects.filter(p => {
@@ -66,37 +66,37 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onCreateProject, on
     <div className="flex-1 h-full bg-[#050505] overflow-y-auto p-6 md:p-10 font-sans">
       
       {/* 🧱 3️⃣ CLEAN DASHBOARD STATUS WIDGET */}
-      <div className="bg-gray-100 p-6 rounded-2xl mb-10 border border-gray-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm text-blue-600">
-                  <CreditCard size={24} />
+      <div className="bg-gray-100 p-4 md:p-6 rounded-2xl mb-10 border border-gray-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex items-center gap-4 self-start md:self-center">
+              <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-full flex items-center justify-center shadow-sm text-blue-600">
+                  <CreditCard size={20} className="md:w-6 md:h-6" />
               </div>
               <div>
-                  <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">Current Plan</p>
-                  <div className="text-2xl font-black text-gray-900 uppercase">{userPlan}</div>
+                  <p className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Current Plan</p>
+                  <div className="text-xl md:text-2xl font-black text-gray-900 uppercase">{userPlan}</div>
               </div>
           </div>
 
-          <div className="flex-1 w-full md:w-auto md:px-8 border-l border-gray-300 ml-4">
-              <div className="flex justify-between text-xs font-bold text-gray-600 mb-1">
+          <div className="flex-1 w-full md:w-auto md:px-8 md:border-l border-gray-300">
+              <div className="flex justify-between text-[10px] md:text-xs font-bold text-gray-600 mb-1">
                   <span>Runs (AI Executions)</span>
                   <span>{runsUsed} / {currentLimits.RUNS}</span>
               </div>
-              <div className="w-full h-2 bg-gray-300 rounded-full overflow-hidden mb-3">
+              <div className="w-full h-1.5 md:h-2 bg-gray-300 rounded-full overflow-hidden mb-3">
                   <div className="h-full bg-blue-600" style={{ width: `${Math.min((runsUsed / currentLimits.RUNS) * 100, 100)}%` }}></div>
               </div>
 
               {/* PROJECT STORAGE METER */}
-              <div className="flex justify-between text-xs font-bold text-gray-600 mb-1">
+              <div className="flex justify-between text-[10px] md:text-xs font-bold text-gray-600 mb-1">
                   <span>Saved Workflows</span>
                   <span>{projects.length} / {userPlan === 'FREE' ? projectLimit : '∞'}</span>
               </div>
-              <div className="w-full h-2 bg-gray-300 rounded-full overflow-hidden">
+              <div className="w-full h-1.5 md:h-2 bg-gray-300 rounded-full overflow-hidden">
                   <div className={`h-full ${isLimitReached && userPlan === 'FREE' ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${userPlan === 'FREE' ? Math.min((projects.length / projectLimit) * 100, 100) : 100}%` }}></div>
               </div>
 
               {planExpiry && (
-                  <p className="text-[10px] text-gray-500 mt-2 font-mono">
+                  <p className="text-[9px] md:text-[10px] text-gray-500 mt-2 font-mono">
                       Valid Till: {planExpiry}
                   </p>
               )}
@@ -105,7 +105,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onCreateProject, on
           {userPlan === 'FREE' && (
               <button 
                 onClick={onUpgrade}
-                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+                className="w-full md:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs md:text-sm transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
               >
                   Upgrade Now
               </button>

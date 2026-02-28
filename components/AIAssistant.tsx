@@ -1,12 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, Send, X, Loader2, Brain, CheckCircle, Layout, GitMerge, Cpu, ShieldCheck, ArrowRight, Activity, Terminal, BookOpen, Zap, AlertTriangle, Lock, Crown } from 'lucide-react';
-import { chatWithArchitect, analyzeWorkflow } from '../services/geminiService';
+import { Brain, Send, Loader2, CheckCircle, XCircle, ChevronRight, Zap, Sparkles, AlertCircle, LayoutGrid, Split, Info, ArrowRight, ShieldCheck } from 'lucide-react';
+import Markdown from 'react-markdown';
 import { Nexus, Synapse, ChatMessage, PlanTier } from '../types';
-import { ArchitectResponse, Decision } from '../services/architect/types';
-import { saveArchitectMemory } from '../services/cloudStore';
-import { PLAN_LIMITS } from '../constants';
-import { checkAndConsumeCredit } from '../services/usageGuard'; // 🔥 UPDATED IMPORT
+import { processArchitectRequest, analyzeWorkflow } from '../services/architect';
+import { checkAndConsumeCredit } from '../services/usageGuard';
 import { useAuth } from '../context/AuthContext';
 
 interface AIAssistantProps {
@@ -20,15 +18,22 @@ interface AIAssistantProps {
   onUpgrade?: () => void;
 }
 
-const AIAssistant: React.FC<AIAssistantProps> = ({ 
-  isOpen, onClose, onApplyStream, currentNexuses, currentSynapses, projectContext = "New Workflow", userPlan = 'FREE', onUpgrade
+const AIAssistant: React.FC<AIAssistantProps> = ({
+  isOpen,
+  onClose,
+  onApplyStream,
+  currentNexuses,
+  currentSynapses,
+  projectContext,
+  userPlan,
+  onUpgrade
 }) => {
   const { user } = useAuth();
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [pendingChanges, setPendingChanges] = useState<ArchitectResponse | null>(null);
-  const [thinkingStep, setThinkingStep] = useState<string>('');
+  const [thinkingStep, setThinkingStep] = useState('');
+  const [pendingChanges, setPendingChanges] = useState<any>(null);
   
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -54,7 +59,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     if (!input.trim() || isLoading) return;
 
     // --- 🔥 REAL USAGE GUARD (CREDIT CONSUMPTION) ---
-    if (user && user.uid !== 'dev-bypass-user-999') {
+    if (user) {
         const hasCredit = await checkAndConsumeCredit(user.uid, 1); // Cost = 1 credit
         if (!hasCredit) {
             setMessages(prev => [...prev, { 
@@ -80,13 +85,15 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         "Mapping Data Variables...",
         "Finalizing Blueprint..."
     ];
+
     let stepIdx = 0;
     const interval = setInterval(() => {
-        if(stepIdx < steps.length) setThinkingStep(steps[stepIdx++]);
+        setThinkingStep(steps[stepIdx % steps.length]);
+        stepIdx++;
     }, 1500);
 
     try {
-      const result = await chatWithArchitect(userMsg.content, messages, "", currentNexuses, currentSynapses, projectContext);
+      const result = await processArchitectRequest(input, currentNexuses, currentSynapses, projectContext);
       
       clearInterval(interval);
       setThinkingStep('');
@@ -121,7 +128,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   const handleAnalysis = async (intent: 'VALIDATE' | 'EXPLAIN' | 'OPTIMIZE') => {
       // Analysis consumes quota
-      if (user && user.uid !== 'dev-bypass-user-999') {
+      if (user) {
           const hasCredit = await checkAndConsumeCredit(user.uid, 1);
           if (!hasCredit) {
               setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', content: `🔒 Insufficient Credits.`, timestamp: Date.now() }]);
@@ -147,220 +154,168 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
               timestamp: Date.now()
           }]);
       } catch (e: any) {
-          setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', content: "Analysis Failed: " + e.message, timestamp: Date.now() }]);
+          setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', content: `Analysis Error: ${e.message}`, timestamp: Date.now() }]);
       } finally {
-          setIsLoading(false);
           setThinkingStep('');
+          setIsLoading(false);
       }
   };
 
-  const handleApply = async () => {
+  const applyChanges = () => {
       if (!pendingChanges) return;
-      let appliedNodes: Nexus[] = [];
-      let appliedSynapses: Synapse[] = [];
+      
+      if (pendingChanges.fullBlueprint) {
+          onApplyStream(pendingChanges.fullBlueprint.nexuses, pendingChanges.fullBlueprint.synapses);
+      } else if (pendingChanges.patch) {
+          // Apply patch logic
+          const updatedNexuses = [...currentNexuses];
+          const updatedSynapses = [...currentSynapses];
 
-      try {
-          if (pendingChanges.fullBlueprint) {
-              appliedNodes = pendingChanges.fullBlueprint.nexuses;
-              appliedSynapses = pendingChanges.fullBlueprint.synapses;
-              onApplyStream(appliedNodes, appliedSynapses);
-          } else if (pendingChanges.patch) {
-              let newNodes = [...currentNexuses];
-              let newSynapses = [...currentSynapses];
-              const p = pendingChanges.patch;
-              if(p.removeNodeIds) newNodes = newNodes.filter(n => !p.removeNodeIds.includes(n.id));
-              if(p.removeConnectionIds) newSynapses = newSynapses.filter(c => !p.removeConnectionIds.includes(c.id));
-              if(p.updateNodes) {
-                  newNodes = newNodes.map(n => {
-                      const update = p.updateNodes.find(u => u.id === n.id);
-                      return update ? { ...n, ...update } as Nexus : n;
-                  });
-              }
-              if(p.addNodes) newNodes = [...newNodes, ...p.addNodes];
-              if(p.addConnections) newSynapses = [...newSynapses, ...p.addConnections];
-              
-              appliedNodes = newNodes;
-              appliedSynapses = newSynapses;
-              onApplyStream(newNodes, newSynapses);
+          if (pendingChanges.patch.nexuses) {
+              pendingChanges.patch.nexuses.forEach((pn: any) => {
+                  const idx = updatedNexuses.findIndex(n => n.id === pn.id);
+                  if (idx !== -1) updatedNexuses[idx] = { ...updatedNexuses[idx], ...pn };
+                  else updatedNexuses.push(pn);
+              });
           }
 
-          const lastUserMsg = messages.filter(m => m.role === 'user' && !m.content.startsWith('[SYSTEM')).pop();
-          if (lastUserMsg) {
-              await saveArchitectMemory(lastUserMsg.content, appliedNodes, appliedSynapses);
+          if (pendingChanges.patch.synapses) {
+              pendingChanges.patch.synapses.forEach((ps: any) => {
+                  if (!updatedSynapses.some(s => s.id === ps.id)) updatedSynapses.push(ps);
+              });
           }
-
-          setPendingChanges(null);
-          onClose();
-      } catch (e: any) {
-          console.error("Apply Error:", e);
-          setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', content: `Apply Failed: ${e.message}`, timestamp: Date.now() }]);
+          onApplyStream(updatedNexuses, updatedSynapses);
       }
+
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', content: `✅ Blueprint applied to workspace.`, timestamp: Date.now() }]);
+      setPendingChanges(null);
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-y-0 right-0 w-[520px] bg-[#030303]/98 backdrop-blur-3xl border-l border-white/10 z-[100] flex flex-col shadow-[0_0_100px_rgba(0,0,0,0.8)] animate-in slide-in-from-right duration-500 font-sans">
-        
-        {/* HEADER */}
-        <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
-            <div className="flex items-center gap-4">
-                <div className="p-2.5 bg-nexus-accent/10 rounded-xl border border-nexus-accent/20 shadow-[0_0_20px_rgba(0,255,157,0.1)]">
-                    <Brain size={24} className="text-nexus-accent"/>
+    <div className="fixed inset-y-0 right-0 w-full md:w-[480px] bg-[#050505] border-l border-white/10 z-[200] flex flex-col shadow-2xl animate-in slide-in-from-right duration-300">
+        {/* Header */}
+        <div className="p-6 border-b border-white/10 flex items-center justify-between bg-nexus-950/50 backdrop-blur-md">
+            <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-nexus-accent/10 rounded-xl flex items-center justify-center border border-nexus-accent/20">
+                    <Brain className="text-nexus-accent" size={20} />
                 </div>
                 <div>
-                    <h2 className="text-sm font-black text-white uppercase tracking-[0.2em]">Architect Intelligence</h2>
-                    <div className="flex items-center gap-2 mt-1">
-                        <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-                        <span className="text-[9px] text-gray-500 font-mono uppercase tracking-widest">Planning Mode Active</span>
-                    </div>
+                    <h2 className="text-sm font-black text-white uppercase tracking-widest leading-none">Architect AI</h2>
+                    <p className="text-[10px] text-gray-500 font-bold uppercase mt-1 tracking-wider">Logic Design Protocol</p>
                 </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg text-gray-500 hover:text-white transition-colors"><X size={20}/></button>
+            <button onClick={onClose} className="p-2 text-gray-500 hover:text-white transition-colors">
+                <XCircle size={24} />
+            </button>
         </div>
 
-        {/* MESSAGES */}
-        <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar" ref={scrollRef}>
-            {messages.map((msg, i) => (
-                <div key={i} className={`flex flex-col gap-3 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                    <span className="text-[9px] font-black uppercase text-gray-600 tracking-widest px-1">
-                        {msg.role === 'user' ? 'Requirements' : 'Blueprint Design'}
-                    </span>
-                    
-                    {msg.content.includes("Credit Limit Reached") ? (
-                        <div className="max-w-[90%] p-6 bg-gradient-to-br from-nexus-900 to-black rounded-2xl border border-nexus-accent/30 shadow-2xl relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 p-3 opacity-20"><Lock size={48} className="text-nexus-accent"/></div>
-                            <div className="relative z-10">
-                                <h3 className="text-sm font-black text-white uppercase tracking-widest mb-2 flex items-center gap-2">
-                                    <AlertTriangle size={14} className="text-yellow-500"/> Usage Limit Reached
-                                </h3>
-                                <p className="text-xs text-gray-400 mb-4 leading-relaxed">
-                                    You've run out of AI Credits. The Architect requires fuel to continue designing complex systems.
+        {/* Messages */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+            {messages.map((msg) => (
+                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+                    <div className={`max-w-[90%] p-4 rounded-2xl text-sm leading-relaxed ${
+                        msg.role === 'user' 
+                            ? 'bg-nexus-accent text-black font-medium' 
+                            : msg.role === 'system'
+                                ? 'bg-red-500/10 border border-red-500/20 text-red-400 font-mono text-xs'
+                                : 'bg-white/5 border border-white/10 text-gray-300'
+                    }`}>
+                        <div className="markdown-body prose prose-invert prose-sm max-w-none">
+                            <Markdown>{msg.content}</Markdown>
+                        </div>
+                        {msg.metadata?.risks && msg.metadata.risks.length > 0 && (
+                            <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
+                                <p className="text-[10px] font-black text-yellow-500 uppercase mb-2 flex items-center gap-2">
+                                    <AlertCircle size={12} /> Risk Assessment
                                 </p>
-                                <button onClick={onUpgrade} className="w-full py-3 bg-nexus-accent text-black font-black rounded-xl text-[10px] uppercase tracking-widest hover:scale-105 transition-all flex items-center justify-center gap-2 shadow-lg">
-                                    <Crown size={14} fill="currentColor"/> Top Up Credits
-                                </button>
+                                <ul className="space-y-1">
+                                    {msg.metadata.risks.map((r: string, i: number) => (
+                                        <li key={i} className="text-[11px] text-yellow-200/70">• {r}</li>
+                                    ))}
+                                </ul>
                             </div>
-                        </div>
-                    ) : (
-                        <div className={`max-w-[95%] p-5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-xl border ${
-                            msg.role === 'user' 
-                            ? 'bg-nexus-800 text-white border-white/10 rounded-tr-none' 
-                            : (msg.role === 'system' ? 'bg-red-950/20 text-red-200 border-red-900/30' : 'bg-white/[0.03] text-gray-300 border-white/5 rounded-tl-none')
-                        }`}>
-                            {msg.content}
-                        </div>
-                    )}
-
-                    {msg.role === 'assistant' && msg.metadata?.decisionLog && (
-                        <div className="ml-2 w-full max-w-[90%] space-y-2 animate-in fade-in duration-700">
-                             <div className="text-[9px] font-bold text-gray-600 uppercase flex items-center gap-1.5 mb-3">
-                                <Terminal size={10}/> Architectural Decisions
-                            </div>
-                            {msg.metadata.decisionLog.map((decision: Decision, dIdx: number) => (
-                                <div key={dIdx} className="flex items-center gap-3 text-[10px] text-gray-500 font-mono bg-black/40 px-4 py-2.5 rounded-xl border border-white/5">
-                                    <div className="w-1 h-1 bg-nexus-wire rounded-full shadow-[0_0_5px_#ffd700]"></div>
-                                    <span className="font-bold uppercase text-nexus-wire shrink-0">{decision.action}:</span>
-                                    <span className="truncate opacity-70">{decision.reason}</span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             ))}
 
-            {isLoading && (
-                <div className="flex flex-col gap-4 animate-in fade-in zoom-in-95 my-6">
-                    <div className="flex items-center gap-3 text-nexus-accent text-xs font-mono uppercase tracking-[0.2em] px-4">
-                        <Loader2 size={16} className="animate-spin"/>
-                        {thinkingStep || "Processing..."}
+            {thinkingStep && (
+                <div className="flex justify-start animate-pulse">
+                    <div className="bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center gap-3">
+                        <Loader2 size={16} className="animate-spin text-nexus-accent" />
+                        <span className="text-xs font-bold text-nexus-accent uppercase tracking-widest">{thinkingStep}</span>
                     </div>
-                    <div className="h-0.5 bg-nexus-900 w-[60%] ml-4 rounded-full overflow-hidden">
-                        <div className="h-full bg-nexus-accent animate-progress-indefinite"></div>
+                </div>
+            )}
+
+            {pendingChanges && (
+                <div className="p-6 bg-nexus-accent/5 border border-nexus-accent/20 rounded-3xl animate-in zoom-in-95 duration-500">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 bg-nexus-accent/20 rounded-lg text-nexus-accent">
+                            <Sparkles size={18} />
+                        </div>
+                        <div>
+                            <h4 className="text-xs font-black text-white uppercase tracking-widest">Blueprint Ready</h4>
+                            <p className="text-[10px] text-gray-500 font-bold uppercase">Ready for workspace deployment</p>
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <button 
+                            onClick={applyChanges}
+                            className="flex-1 py-3 bg-nexus-accent text-black font-black text-[10px] uppercase tracking-widest rounded-xl hover:scale-105 transition-all shadow-lg"
+                        >
+                            Deploy Blueprint
+                        </button>
+                        <button 
+                            onClick={() => setPendingChanges(null)}
+                            className="px-4 py-3 bg-white/5 text-gray-400 font-black text-[10px] uppercase tracking-widest rounded-xl hover:text-white transition-all"
+                        >
+                            Discard
+                        </button>
                     </div>
                 </div>
             )}
         </div>
 
-        {/* ACTIONS */}
-        <div className="p-8 border-t border-white/10 bg-black/60 backdrop-blur-2xl">
-            {pendingChanges && (
-                <div className="mb-8 p-1 bg-gradient-to-br from-nexus-accent/40 via-blue-500/20 to-purple-500/40 rounded-2xl animate-in slide-in-from-bottom-4">
-                    <div className="bg-[#0a0a0a] p-6 rounded-[14px] relative overflow-hidden">
-                        <div className="flex justify-between items-center mb-4 relative z-10">
-                            <div className="flex items-center gap-2.5 text-nexus-accent text-xs font-black uppercase tracking-widest">
-                                <Layout size={16}/> Blueprint Ready
-                            </div>
-                            <span className="text-[10px] bg-white/5 text-gray-400 px-3 py-1 rounded-full font-mono border border-white/5">
-                                Validated
-                            </span>
-                        </div>
-                        <p className="text-[11px] text-gray-500 mb-6 leading-relaxed relative z-10">
-                            The Architect has finalized the workflow design. Review the logic explanation above before applying to the canvas.
-                        </p>
-                        <div className="flex gap-3 relative z-10">
-                            <button onClick={handleApply} className="flex-1 py-4 bg-nexus-accent text-black rounded-xl text-xs font-black uppercase tracking-widest hover:scale-[1.02] transition-all shadow-[0_0_30px_rgba(0,255,157,0.2)] flex items-center justify-center gap-3">
-                                <CheckCircle size={16}/> Apply Blueprint
-                            </button>
-                            <button onClick={() => setPendingChanges(null)} className="px-6 py-4 bg-white/5 text-gray-400 hover:text-white rounded-xl text-xs font-bold transition-all border border-transparent hover:border-white/10">
-                                Discard
-                            </button>
-                        </div>
-                        <div className="absolute -top-10 -right-10 w-40 h-40 bg-nexus-accent/5 rounded-full blur-3xl"></div>
-                    </div>
-                </div>
-            )}
-
-            {/* NEURAL TOOLBELT */}
-            <div className="grid grid-cols-3 gap-2 mb-4">
-                <button 
-                    onClick={() => handleAnalysis('VALIDATE')}
-                    disabled={isLoading}
-                    className="flex items-center justify-center gap-2 py-3 bg-red-900/10 border border-red-900/30 hover:bg-red-900/20 text-red-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
-                >
-                    <ShieldCheck size={14}/> QA Check
-                </button>
-                <button 
-                    onClick={() => handleAnalysis('EXPLAIN')}
-                    disabled={isLoading}
-                    className="flex items-center justify-center gap-2 py-3 bg-blue-900/10 border border-blue-900/30 hover:bg-blue-900/20 text-blue-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
-                >
-                    <BookOpen size={14}/> Explain
-                </button>
-                <button 
-                    onClick={() => handleAnalysis('OPTIMIZE')}
-                    disabled={isLoading}
-                    className="flex items-center justify-center gap-2 py-3 bg-nexus-accent/10 border border-nexus-accent/20 hover:bg-nexus-accent/20 text-nexus-accent rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
-                >
-                    <Zap size={14}/> Optimize
-                </button>
+        {/* Quick Actions */}
+        {!isLoading && messages.length > 1 && (
+            <div className="px-6 py-3 flex gap-2 overflow-x-auto no-scrollbar border-t border-white/5 bg-black/40">
+                <button onClick={() => handleAnalysis('VALIDATE')} className="whitespace-nowrap px-4 py-2 bg-white/5 border border-white/10 rounded-full text-[10px] font-black text-gray-400 hover:text-white hover:border-white/20 transition-all uppercase tracking-widest">QA Check</button>
+                <button onClick={() => handleAnalysis('OPTIMIZE')} className="whitespace-nowrap px-4 py-2 bg-white/5 border border-white/10 rounded-full text-[10px] font-black text-gray-400 hover:text-white hover:border-white/20 transition-all uppercase tracking-widest">Optimize</button>
+                <button onClick={() => handleAnalysis('EXPLAIN')} className="whitespace-nowrap px-4 py-2 bg-white/5 border border-white/10 rounded-full text-[10px] font-black text-gray-400 hover:text-white hover:border-white/20 transition-all uppercase tracking-widest">Explain Flow</button>
             </div>
+        )}
 
-            <form onSubmit={handleSubmit} className="relative group">
+        {/* Input */}
+        <div className="p-6 border-t border-white/10 bg-nexus-950/50">
+            <form onSubmit={handleSubmit} className="relative">
                 <input 
-                    type="text" 
+                    type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="Describe what you want to design..."
-                    className={`w-full bg-[#080808] border rounded-2xl pl-6 pr-16 py-5 text-sm text-white focus:ring-1 outline-none transition-all placeholder:text-gray-800 border-white/10 focus:border-nexus-accent focus:ring-nexus-accent/30`}
+                    placeholder="Describe your logic goal..."
                     disabled={isLoading}
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-6 pr-14 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-nexus-accent/50 transition-all"
                 />
                 <button 
-                    type="submit" 
+                    type="submit"
                     disabled={!input.trim() || isLoading}
-                    className={`absolute right-3 top-3 bottom-3 aspect-square rounded-xl hover:scale-105 transition-all disabled:opacity-0 disabled:scale-90 flex items-center justify-center shadow-lg bg-nexus-accent text-black`}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-nexus-accent text-black rounded-xl flex items-center justify-center hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    <ArrowRight size={22} strokeWidth={3} />
+                    {isLoading ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
                 </button>
             </form>
-            
-            <div className="flex justify-between items-center mt-5 px-1">
-                <div className="flex items-center gap-2 text-[10px] text-gray-600 font-bold uppercase tracking-widest">
-                    <Activity size={12} className="text-nexus-success"/> Design Engine Active
+            <div className="mt-4 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-[9px] font-black text-gray-600 uppercase tracking-widest">
+                    <ShieldCheck size={12} /> Architect Mode
                 </div>
-                <div className="text-[10px] text-gray-700 font-mono">
-                    Session ID: {messages[0]?.id.slice(0, 8)}
-                </div>
+                {userPlan === 'FREE' && (
+                    <button onClick={onUpgrade} className="text-[9px] font-black text-nexus-accent uppercase tracking-widest hover:underline decoration-nexus-accent/30 underline-offset-4">
+                        Upgrade for Unlimited AI
+                    </button>
+                )}
             </div>
         </div>
     </div>

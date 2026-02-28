@@ -127,7 +127,14 @@ export enum NexusSubtype {
   CHAT_TRIGGER = 'CHAT_TRIGGER',
   
   // --- DYNAMIC AI NODE ---
-  CUSTOM_AI_NODE = 'CUSTOM_AI_NODE' 
+  CUSTOM_AI_NODE = 'CUSTOM_AI_NODE',
+
+  // --- NEWLY ADDED FOR SIDEBAR ---
+  AI_AGENT = 'AI_AGENT',
+  ROUTER = 'ROUTER',
+  DB_OPERATION = 'DB_OPERATION',
+  CUSTOM_JS = 'CUSTOM_JS',
+  LOOP = 'LOOP'
 }
 
 export type PlanTier = 'FREE' | 'PRO' | 'BUSINESS' | 'ELITE';
@@ -262,11 +269,12 @@ export interface ExecutionState {
 
 export interface Blueprint {
   id: string;
-  name: string;
+  title: string;
   description: string;
   category: string;
   nexuses: Nexus[];
   synapses: Synapse[];
+  isPremium?: boolean;
 }
 
 export interface ChatMessage {

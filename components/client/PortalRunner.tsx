@@ -8,9 +8,10 @@ import { saveExecutionLog } from '../../services/cloudStore';
 interface PortalRunnerProps {
     project: Project;
     onSaveSettings: (vars: any) => void;
+    userId: string;
 }
 
-export const PortalRunner: React.FC<PortalRunnerProps> = ({ project, onSaveSettings }) => {
+export const PortalRunner: React.FC<PortalRunnerProps> = ({ project, onSaveSettings, userId }) => {
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
     const [formData, setFormData] = useState<Record<string, string>>({});
@@ -29,7 +30,7 @@ export const PortalRunner: React.FC<PortalRunnerProps> = ({ project, onSaveSetti
         const tokens = Math.floor(Math.random() * 600) + 150;
         const credits = Math.ceil(tokens / 80);
 
-        await saveExecutionLog('dev-mode-user', {
+        await saveExecutionLog(userId, {
             id: `PORTAL_REQ_${Date.now()}`,
             timestamp: Date.now(),
             nexusId: triggerNode?.id || 'entry_point',
@@ -55,96 +56,94 @@ export const PortalRunner: React.FC<PortalRunnerProps> = ({ project, onSaveSetti
                 {submitted ? (
                     <div className="text-center py-20 animate-in zoom-in-95 duration-700">
                         <div className="w-24 h-24 bg-green-500/10 rounded-[32px] border border-green-500/20 flex items-center justify-center mx-auto mb-10 text-green-400 shadow-[0_0_80px_rgba(34,197,94,0.15)]">
-                            <CheckCircle size={48} strokeWidth={1} />
+                            <CheckCircle size={48} />
                         </div>
-                        <h3 className="text-3xl font-black text-white mb-4 tracking-tight">Sequence Active</h3>
-                        <p className="text-slate-500 mb-12 max-w-xs mx-auto leading-relaxed">The automation stack has been successfully initialized in the production cluster.</p>
-                        <button onClick={() => { setSubmitted(false); setFormData({}); }} className="px-12 py-5 bg-white text-black font-black rounded-3xl text-[11px] uppercase tracking-[0.2em] hover:bg-slate-200 transition-all active:scale-95 flex items-center gap-4 mx-auto shadow-xl">
-                            New Session <ArrowRight size={16}/>
+                        <h3 className="text-3xl font-black text-white mb-4 tracking-tighter uppercase">Protocol Executed</h3>
+                        <p className="text-slate-500 text-sm mb-12 max-w-xs mx-auto">The workflow has been triggered successfully. Check results in the logs tab.</p>
+                        <button 
+                            onClick={() => { setSubmitted(false); setFormData({}); }}
+                            className="px-10 py-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:bg-white/10 hover:text-white transition-all"
+                        >
+                            New Execution
                         </button>
                     </div>
                 ) : (
-                    <form onSubmit={handleSubmit} className="space-y-10">
-                        <div className="mb-12">
-                            <div className="flex items-center gap-4 mb-4">
-                                <div className="p-3 bg-blue-600/10 rounded-2xl text-blue-500 border border-blue-600/20 shadow-lg">
-                                    <Zap size={24} fill="currentColor"/>
+                    <div className="space-y-12">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <div className="flex items-center gap-3 text-blue-500 text-[10px] font-black uppercase tracking-[0.3em] mb-4">
+                                    <Zap size={14} fill="currentColor"/> Execution Hub
                                 </div>
-                                <div>
-                                    <h3 className="text-2xl font-black text-white tracking-tight leading-none mb-1">Execute Hub</h3>
-                                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.3em]">Bespoke Automation Control</p>
-                                </div>
+                                <h3 className="text-4xl font-black text-white tracking-tighter uppercase italic">Trigger<br/><span className="text-slate-500">Protocol</span></h3>
+                            </div>
+                            <div className="w-16 h-16 bg-blue-600/10 rounded-2xl border border-blue-500/20 flex items-center justify-center text-blue-500 animate-pulse">
+                                <Play size={24} fill="currentColor"/>
                             </div>
                         </div>
 
-                        {formFields.length > 0 ? (
-                            <div className="space-y-8">
-                                {formFields.map((field: any, idx: number) => (
-                                    <div key={idx} className="space-y-3">
-                                        <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest ml-1">{field.label}</label>
-                                        {field.type === 'textarea' ? (
-                                            <textarea 
-                                                required placeholder={field.placeholder}
-                                                className="w-full bg-black/40 border border-white/5 rounded-3xl p-6 text-sm text-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none min-h-[160px] transition-all custom-scrollbar placeholder:text-slate-800"
-                                                value={formData[field.label] || ''}
-                                                onChange={e => setFormData({...formData, [field.label]: e.target.value})}
-                                            />
-                                        ) : (
-                                            <input 
-                                                type={field.type || 'text'} required placeholder={field.placeholder}
-                                                className="w-full bg-black/40 border border-white/5 rounded-3xl p-6 text-sm text-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all placeholder:text-slate-800"
-                                                value={formData[field.label] || ''}
-                                                onChange={e => setFormData({...formData, [field.label]: e.target.value})}
-                                            />
-                                        )}
+                        <form onSubmit={handleSubmit} className="space-y-8">
+                            <div className="space-y-6">
+                                {formFields.map((field: any) => (
+                                    <div key={field.id} className="group">
+                                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 group-focus-within:text-blue-400 transition-colors">
+                                            {field.label} {field.required && <span className="text-red-500">*</span>}
+                                        </label>
+                                        <input 
+                                            type={field.type || 'text'}
+                                            required={field.required}
+                                            value={formData[field.id] || ''}
+                                            onChange={(e) => setFormData({...formData, [field.id]: e.target.value})}
+                                            placeholder={field.placeholder}
+                                            className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm text-white focus:outline-none focus:border-blue-500/50 focus:bg-white/[0.08] transition-all"
+                                        />
                                     </div>
                                 ))}
                             </div>
-                        ) : (
-                            <div className="py-24 bg-black/20 rounded-[32px] border-2 border-dashed border-white/5 text-center flex flex-col items-center">
-                                <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-6">
-                                    <Settings size={32} className="text-slate-800 animate-spin-slow" />
-                                </div>
-                                <p className="text-slate-600 text-xs font-black uppercase tracking-[0.2em]">Static Trigger Active</p>
-                                <p className="text-[10px] text-slate-700 mt-2">No manual inputs required for this stack.</p>
-                            </div>
-                        )}
 
-                        <div className="pt-10">
-                            <button type="submit" disabled={submitting} className="w-full py-6 bg-blue-600 hover:bg-blue-500 text-white rounded-[32px] font-black text-[13px] uppercase tracking-[0.4em] transition-all flex items-center justify-center gap-5 disabled:opacity-50 shadow-[0_20px_50px_rgba(37,99,235,0.3)] active:scale-[0.98]">
-                                {submitting ? <Loader2 className="animate-spin" size={20}/> : <Play size={20} fill="currentColor"/>}
-                                {submitting ? 'Authenticating Gateway...' : 'Initialize Stack'}
+                            <button 
+                                type="submit"
+                                disabled={submitting}
+                                className="w-full py-6 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.4em] flex items-center justify-center gap-4 hover:bg-blue-500 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 shadow-[0_20px_40px_rgba(37,99,235,0.2)]"
+                            >
+                                {submitting ? (
+                                    <Loader2 className="animate-spin" size={20} />
+                                ) : (
+                                    <>
+                                        Run Workflow <ArrowRight size={18} />
+                                    </>
+                                )}
                             </button>
-                        </div>
-                    </form>
+                        </form>
+                    </div>
                 )}
             </div>
-            
-            {/* SECRETS & SECURITY VAULT */}
-            <div className="space-y-12 animate-in slide-in-from-right-10 duration-1000">
-                <div className="bg-[#0f111a] border border-white/5 rounded-[40px] p-10">
+
+            {/* VAULT: CONFIGURATION */}
+            <div className="space-y-10">
+                <div className="bg-slate-900/30 border border-white/5 rounded-[40px] p-10">
                     <div className="flex items-center gap-4 mb-8">
-                        <div className="p-3 bg-purple-600/10 rounded-2xl text-purple-400 border border-purple-600/20">
-                            <Key size={22}/>
+                        <div className="p-3 bg-purple-600/10 rounded-xl text-purple-500 border border-purple-500/20">
+                            <Key size={20}/>
                         </div>
                         <div>
-                            <h3 className="text-xl font-black text-white tracking-tight leading-none mb-1">Secrets Vault</h3>
-                            <p className="text-[9px] text-slate-500 font-bold uppercase tracking-[0.3em]">Encrypted Configuration</p>
+                            <h4 className="text-sm font-black text-white uppercase tracking-widest">Vault Config</h4>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Runtime Variables</p>
                         </div>
                     </div>
-                    <ClientSettings project={project} onSave={onSaveSettings} />
+                    <ClientSettings 
+                        project={project} 
+                        onSave={onSaveSettings} 
+                    />
                 </div>
 
-                <div className="p-10 bg-blue-900/10 border border-blue-500/20 rounded-[40px] flex gap-8 items-center shadow-2xl">
-                    <div className="w-16 h-16 bg-blue-600/20 rounded-3xl flex items-center justify-center text-blue-400 shrink-0 border border-blue-500/30">
-                        <ShieldCheck size={36} />
+                <div className="bg-blue-600/5 border border-blue-500/10 rounded-[40px] p-10">
+                    <div className="flex items-center gap-4 mb-6">
+                        <ShieldCheck size={20} className="text-blue-400"/>
+                        <h4 className="text-xs font-black text-white uppercase tracking-widest">Security Protocol</h4>
                     </div>
-                    <div>
-                        <h4 className="text-sm font-black text-white uppercase tracking-[0.2em] mb-2">Zero-Trust Transit</h4>
-                        <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
-                            Every input payload and credential is encapsulated in an AES-256 encrypted tunnel before hitting the execution cluster.
-                        </p>
-                    </div>
+                    <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                        All executions are encrypted and logged. API keys are stored in the secure vault and never exposed to the client interface.
+                    </p>
                 </div>
             </div>
         </div>

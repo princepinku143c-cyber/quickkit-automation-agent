@@ -275,31 +275,31 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-black/95 backdrop-blur-3xl animate-in fade-in duration-300">
-      <div className="bg-[#050505] border border-white/10 w-full max-w-6xl h-[90vh] rounded-[40px] shadow-3xl flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-[250] flex items-center justify-center md:p-4 bg-black/95 backdrop-blur-3xl animate-in fade-in duration-300">
+      <div className="bg-[#050505] border border-white/10 w-full md:max-w-6xl h-full md:h-[90vh] md:rounded-[40px] shadow-3xl flex flex-col overflow-hidden">
         
-        <div className="px-10 py-8 border-b border-white/5 bg-[#080808] flex justify-between items-center">
-          <div className="flex items-center gap-6">
-            <div className="p-4 bg-nexus-accent/10 rounded-[20px] border border-nexus-accent/20 shadow-[0_0_30px_rgba(0,255,157,0.1)]">
-              <Terminal size={28} className="text-nexus-accent" />
+        <div className="px-6 md:px-10 py-6 md:py-8 border-b border-white/5 bg-[#080808] flex justify-between items-center shrink-0">
+          <div className="flex items-center gap-4 md:gap-6">
+            <div className="p-3 md:p-4 bg-nexus-accent/10 rounded-xl md:rounded-[20px] border border-nexus-accent/20 shadow-[0_0_30px_rgba(0,255,157,0.1)]">
+              <Terminal size={20} className="md:w-7 md:h-7 text-nexus-accent" />
             </div>
             <div>
-              <h2 className="text-2xl font-black text-white uppercase tracking-[0.2em] leading-tight">
+              <h2 className="text-lg md:text-2xl font-black text-white uppercase tracking-[0.2em] leading-tight">
                   {resumeState ? 'State Resumption' : 'Runtime Debugger'}
               </h2>
               <div className="flex items-center gap-4 mt-1">
                   <div className={`w-2 h-2 rounded-full ${activeRunning ? 'bg-nexus-accent animate-ping' : 'bg-gray-700'}`} />
-                  <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">
+                  <span className="text-[9px] md:text-[10px] text-gray-500 font-black uppercase tracking-widest">
                       {isCloudRun ? 'CLOUD_ENV' : 'LOCAL_VM'}
                   </span>
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="p-3 text-gray-500 hover:text-white bg-white/5 rounded-2xl transition-all"><X size={24}/></button>
+          <button onClick={onClose} className="p-2 md:p-3 text-gray-500 hover:text-white bg-white/5 rounded-xl md:rounded-2xl transition-all"><X size={20} className="md:w-6 md:h-6"/></button>
         </div>
 
         <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
-            <div className="w-full md:w-[380px] p-10 bg-[#030303] border-r border-white/5 flex flex-col overflow-y-auto">
+            <div className="w-full md:w-[380px] p-6 md:p-10 bg-[#030303] border-r border-white/5 flex flex-col overflow-y-auto shrink-0 md:shrink">
                 
                 {/* HEALTH REPORT */}
                 {warnings.length > 0 && (
@@ -395,24 +395,24 @@ const RunModal: React.FC<RunModalProps> = ({ isOpen, onClose, nexuses, synapses,
             </div>
         </div>
 
-        <div className="p-10 border-t border-white/5 bg-[#080808] flex items-center justify-between">
-            <button onClick={onClose} className="px-12 py-5 bg-white/5 text-gray-600 font-black rounded-3xl text-[11px] uppercase tracking-[0.2em] hover:text-white transition-all">Close Debugger</button>
-            <div className="flex gap-4">
+        <div className="p-6 md:p-10 border-t border-white/5 bg-[#080808] flex flex-col md:flex-row items-center justify-between gap-4 shrink-0">
+            <button onClick={onClose} className="w-full md:w-auto px-8 md:px-12 py-4 md:py-5 bg-white/5 text-gray-600 font-black rounded-2xl md:rounded-3xl text-[10px] md:text-[11px] uppercase tracking-[0.2em] hover:text-white transition-all order-2 md:order-1">Close Debugger</button>
+            <div className="flex flex-col md:flex-row gap-3 md:gap-4 w-full md:w-auto order-1 md:order-2">
                 {!resumeState && (
                   <button 
                       onClick={handleCloudStart} 
                       disabled={activeRunning || isBlocked}
-                      className={`px-12 py-5 bg-nexus-900 border border-nexus-800 text-gray-300 font-black rounded-3xl text-[11px] uppercase tracking-[0.2em] flex items-center gap-3 transition-all ${isBlocked ? 'opacity-50 cursor-not-allowed' : 'hover:bg-nexus-800 hover:text-white'}`}
+                      className={`flex-1 md:flex-none px-8 md:px-12 py-4 md:py-5 bg-nexus-900 border border-nexus-800 text-gray-300 font-black rounded-2xl md:rounded-3xl text-[10px] md:text-[11px] uppercase tracking-[0.2em] flex items-center justify-center gap-3 transition-all ${isBlocked ? 'opacity-50 cursor-not-allowed' : 'hover:bg-nexus-800 hover:text-white'}`}
                   >
-                      <CloudLightning size={20}/> Cloud Pulse
+                      <CloudLightning size={18} className="md:w-5 md:h-5"/> Cloud Pulse
                   </button>
                 )}
                 <button 
                     onClick={() => handleLocalStart()} 
                     disabled={activeRunning || isBlocked}
-                    className={`px-12 py-5 bg-nexus-accent text-black font-black rounded-3xl text-[11px] uppercase tracking-[0.2em] flex items-center gap-3 transition-all shadow-[0_20px_60px_rgba(0,255,157,0.25)] active:scale-95 ${isBlocked ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:bg-nexus-success'}`}
+                    className={`flex-1 md:flex-none px-8 md:px-12 py-4 md:py-5 bg-nexus-accent text-black font-black rounded-2xl md:rounded-3xl text-[10px] md:text-[11px] uppercase tracking-[0.2em] flex items-center justify-center gap-3 transition-all shadow-[0_20px_60px_rgba(0,255,157,0.25)] active:scale-95 ${isBlocked ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:bg-nexus-success'}`}
                 >
-                    {activeRunning ? <Loader2 className="animate-spin" size={20}/> : <Play size={20} fill="currentColor"/>}
+                    {activeRunning ? <Loader2 className="animate-spin" size={18} /> : <Play size={18} className="md:w-5 md:h-5" fill="currentColor"/>}
                     {resumeState ? 'Resume Runtime' : 'Start Sequence'}
                 </button>
             </div>

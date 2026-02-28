@@ -150,3 +150,11 @@ export const getUserReferral = async (userId: string, email: string): Promise<Re
     await docRef.set(newRef);
     return newRef;
 };
+
+/**
+ * Helper to check if a user has admin privileges
+ */
+export const isAdmin = (userPlan: any): boolean => {
+    if (!userPlan) return false;
+    return userPlan.role === 'ADMIN' || userPlan.role === 'OWNER';
+};

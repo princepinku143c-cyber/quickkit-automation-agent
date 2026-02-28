@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { X, User, CreditCard, ShieldCheck, LogOut, CheckCircle, AlertTriangle, Calendar, Download, Zap, RefreshCw, ShoppingBag } from 'lucide-react';
+import { X, User, CreditCard, ShieldCheck, LogOut, CheckCircle, AlertTriangle, Calendar, Download, Zap, RefreshCw, ShoppingBag, Settings as SettingsIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { PaymentGateway } from '../services/paymentGateway';
 import { PLAN_LIMITS, ADDON_PACKS } from '../constants';
@@ -19,7 +19,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [isCancelling, setIsCancelling] = useState(false);
   const [cancelConfirm, setCancelConfirm] = useState(false);
   const [isBuying, setIsBuying] = useState<string | null>(null);
-  const [refundRequest, setRefundRequest] = useState(false);
+
+  const billingAutomationEnabled = false;
+  const showComingSoonBillingNotice = !billingAutomationEnabled;
 
   if (!isOpen) return null;
 
@@ -35,8 +37,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
           setCancelConfirm(false);
           onClose();
           window.location.reload();
-      } catch (e) {
-          alert("Failed to cancel. Please contact support.");
+      } catch (e: any) {
+          alert(e?.message || "Failed to cancel. Please contact support.");
       } finally {
           setIsCancelling(false);
       }
@@ -56,8 +58,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
               },
               (err) => alert("Purchase failed.")
           );
-      } catch (e) {
+      } catch (e: any) {
           console.error(e);
+          alert(e?.message || "Add-on purchase is currently unavailable.");
       } finally {
           setIsBuying(null);
       }
@@ -67,11 +70,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       if (!confirm("Are you sure? This will immediately downgrade your account to Free.")) return;
       try {
           // Mock payment ID from user plan or fetch latest invoice
-          await PaymentGateway.requestRefund(userPlan.lastPaymentId || 'pay_mock', 'User requested via settings');
+          if (!userPlan.lastPaymentId) throw new Error('No recent payment found for refund.');
+          await PaymentGateway.requestRefund(userPlan.lastPaymentId, 'User requested via settings');
           alert("Refund processed. Your plan has been downgraded.");
           window.location.reload();
-      } catch (e) {
-          alert("Refund failed. You may be outside the 7-day window.");
+      } catch (e: any) {
+          alert(e?.message || "Refund failed. You may be outside the 7-day window.");
       }
   };
 
@@ -97,27 +101,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
         <div className="flex flex-1 overflow-hidden">
             {/* Sidebar */}
             <div className="w-64 bg-nexus-950 border-r border-nexus-800 p-6 space-y-2">
-                <button onClick={() => setActiveTab('PROFILE')} className={`w-full text-left px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-3 transition-all ${activeTab === 'PROFILE' ? 'bg-white text-black shadow-lg' : 'text-gray-500 hover:bg-white/5'}`}>
-                    <User size={16}/> Profile
+                <button 
+                    onClick={() => setActiveTab('PROFILE')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'PROFILE' ? 'bg-nexus-accent text-black shadow-lg shadow-nexus-accent/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+                >
+                    <User size={18}/> Profile
                 </button>
-                <button onClick={() => setActiveTab('BILLING')} className={`w-full text-left px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-3 transition-all ${activeTab === 'BILLING' ? 'bg-white text-black shadow-lg' : 'text-gray-500 hover:bg-white/5'}`}>
-                    <CreditCard size={16}/> Billing
+                <button 
+                    onClick={() => setActiveTab('BILLING')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'BILLING' ? 'bg-nexus-accent text-black shadow-lg shadow-nexus-accent/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+                >
+                    <CreditCard size={18}/> Billing & Plan
                 </button>
-                <div className="pt-8 mt-8 border-t border-nexus-800">
-                    <button onClick={logout} className="w-full text-left px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-3 text-red-500 hover:bg-red-900/10 transition-all">
-                        <LogOut size={16}/> Sign Out
+                
+                <div className="pt-8">
+                    <button onClick={logout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold text-red-500 hover:bg-red-500/10 transition-all">
+                        <LogOut size={18}/> Sign Out
                     </button>
                 </div>
             </div>
 
             {/* Content */}
-            <div className="flex-1 bg-[#050505] p-10 overflow-y-auto custom-scrollbar">
-                
+            <div className="flex-1 p-10 overflow-y-auto custom-scrollbar bg-black/20">
                 {activeTab === 'PROFILE' && (
-                    <div className="space-y-8">
+                    <div className="space-y-8 animate-in slide-in-from-right-4">
                         <div className="flex items-center gap-6">
-                            <div className="w-20 h-20 bg-nexus-800 rounded-full flex items-center justify-center text-3xl font-black text-gray-500 uppercase border border-nexus-700">
-                                {user?.displayName?.[0] || 'U'}
+                            <div className="w-24 h-24 rounded-3xl bg-nexus-accent/10 border border-nexus-accent/20 flex items-center justify-center overflow-hidden">
+                                {user?.photoURL ? <img src={user.photoURL} className="w-full h-full object-cover" /> : <User size={40} className="text-nexus-accent" />}
                             </div>
                             <div>
                                 <h3 className="text-xl font-bold text-white">{user?.displayName || 'User'}</h3>
@@ -143,7 +153,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
 
                 {activeTab === 'BILLING' && (
                     <div className="space-y-8 animate-in slide-in-from-right-4">
-                        
+                        {showComingSoonBillingNotice && (
+                            <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-200 rounded-2xl p-4 text-xs">
+                                Billing automation actions (cancel, refund, add-ons) are temporarily disabled while backend rollout is finalized.
+                            </div>
+                        )}
+
                         {/* Current Plan Card */}
                         <div className="bg-gradient-to-br from-nexus-900 to-black border border-nexus-800 rounded-[24px] p-8 relative overflow-hidden">
                             <div className="absolute top-0 right-0 p-3 opacity-10"><CreditCard size={100} /></div>
@@ -173,7 +188,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                                             Upgrade to Pro
                                         </button>
                                     ) : userPlan.autoRenew ? (
-                                        <button onClick={() => setCancelConfirm(true)} className="px-6 py-3 bg-nexus-900 border border-nexus-800 text-gray-400 font-bold rounded-xl text-xs uppercase hover:text-white hover:border-red-500 hover:bg-red-900/10 transition-all">
+                                        <button onClick={() => billingAutomationEnabled && setCancelConfirm(true)} disabled={!billingAutomationEnabled} className="px-6 py-3 bg-nexus-900 border border-nexus-800 text-gray-400 font-bold rounded-xl text-xs uppercase hover:text-white hover:border-red-500 hover:bg-red-900/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                                             Cancel Plan
                                         </button>
                                     ) : (
@@ -186,7 +201,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                             
                             {userPlan.tier !== 'FREE' && (
                                 <div className="mt-4 pt-4 border-t border-white/5 flex gap-4">
-                                    <button onClick={handleRefund} className="text-[10px] text-gray-500 hover:text-white underline decoration-dotted">Request Refund (7-Day Policy)</button>
+                                    <button onClick={billingAutomationEnabled ? handleRefund : undefined} disabled={!billingAutomationEnabled} className="text-[10px] text-gray-500 hover:text-white underline decoration-dotted disabled:opacity-50 disabled:cursor-not-allowed">Request Refund (7-Day Policy)</button>
                                 </div>
                             )}
                         </div>
@@ -197,12 +212,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                                 <div className="w-12 h-12 bg-nexus-accent/20 rounded-full flex items-center justify-center text-nexus-accent">
                                     <Zap size={24} fill="currentColor"/>
                                 </div>
-                                <div>
-                                    <h4 className="text-lg font-black text-white">Unlimited Power Active</h4>
-                                    <p className="text-xs text-gray-400 leading-relaxed">
-                                        Relax. You have unlimited access to the Architect and all premium nodes. No add-ons required.
-                                    </p>
-                                </div>
+                                {userPlan.tier === 'BUSINESS' ? (
+                                    <div>
+                                        <h4 className="text-lg font-black text-white">Unlimited Power Active</h4>
+                                        <p className="text-xs text-gray-400 leading-relaxed">
+                                            Relax. You have unlimited access to the Architect and all premium nodes. No add-ons required.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <h4 className="text-lg font-black text-white">Pro Access Active</h4>
+                                        <p className="text-xs text-gray-400 leading-relaxed">
+                                            You have 5,000 monthly runs and full access to Architect Pro.
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <div>
@@ -219,17 +243,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                                     {ADDON_PACKS.map(pack => (
                                         <div key={pack.id} className="bg-nexus-900/40 border border-nexus-800 p-4 rounded-2xl hover:border-nexus-accent/50 transition-all group">
                                             <div className="flex justify-between items-start mb-2">
-                                                <div className="p-2 bg-nexus-950 rounded-lg text-nexus-accent"><ShoppingBag size={16}/></div>
-                                                <div className="text-xs font-bold text-white">{regionSymbol}{userPlan.region === 'IN' ? pack.price.IN : pack.price.GLOBAL}</div>
+                                                 <div className="p-2 bg-nexus-950 rounded-lg text-nexus-accent"><ShoppingBag size={16}/></div>
+                                                 <div className="text-xs font-bold text-white">{regionSymbol}{userPlan.region === 'IN' ? pack.price.IN : pack.price.GLOBAL}</div>
                                             </div>
                                             <div className="text-sm font-black text-white uppercase tracking-tight">{pack.name}</div>
                                             <div className="text-[10px] text-gray-500 mb-4">+{pack.credits} AI Prompts</div>
                                             <button 
-                                                onClick={() => handleBuyAddon(pack)}
-                                                disabled={!!isBuying}
+                                                onClick={billingAutomationEnabled ? () => handleBuyAddon(pack) : undefined}
+                                                disabled={!!isBuying || !billingAutomationEnabled}
                                                 className="w-full py-2 bg-white/5 hover:bg-nexus-accent hover:text-black text-white text-[10px] font-bold rounded-lg uppercase tracking-wider transition-all"
                                             >
-                                                {isBuying === pack.id ? 'Processing...' : 'Buy Now'}
+                                                {!billingAutomationEnabled ? 'Coming Soon' : (isBuying === pack.id ? 'Processing...' : 'Buy Now')}
                                             </button>
                                         </div>
                                     ))}
@@ -255,34 +279,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                                         <AlertTriangle size={24} className="text-red-500"/>
                                     </div>
                                     <h3 className="text-xl font-bold text-white text-center mb-2">Cancel Subscription?</h3>
-                                    <p className="text-xs text-gray-400 text-center mb-6 leading-relaxed">
-                                        You will keep Pro features until <b>{expiryDate}</b>. After that, your account will downgrade to Free.
-                                    </p>
-                                    <div className="space-y-3">
-                                        <button onClick={handleCancel} disabled={isCancelling} className="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs uppercase transition-all flex items-center justify-center gap-2">
-                                            {isCancelling ? 'Processing...' : 'Yes, Cancel'}
-                                        </button>
-                                        <button onClick={() => setCancelConfirm(false)} className="w-full py-3 bg-nexus-900 hover:bg-nexus-800 text-gray-400 font-bold rounded-xl text-xs uppercase transition-all border border-nexus-800">
-                                            Keep Pro
+                                    <p className="text-xs text-gray-500 text-center mb-8">You will keep access until the end of your current billing period.</p>
+                                    
+                                    <div className="flex gap-3">
+                                        <button onClick={() => setCancelConfirm(false)} className="flex-1 py-3 bg-nexus-800 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest">Keep Plan</button>
+                                        <button onClick={handleCancel} disabled={isCancelling} className="flex-1 py-3 bg-red-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-red-500 transition-all">
+                                            {isCancelling ? 'Processing...' : 'Confirm'}
                                         </button>
                                     </div>
                                 </div>
                             </div>
                         )}
-
                     </div>
                 )}
-
             </div>
         </div>
       </div>
     </div>
   );
 };
-
-const SettingsIcon = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
-    <circle cx="12" cy="12" r="3"></circle>
-  </svg>
-);

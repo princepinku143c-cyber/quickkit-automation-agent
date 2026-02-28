@@ -15,6 +15,7 @@ const deepClone = <T,>(value: T): T => {
 };
 
 export const useProjectActions = (
+    userId: string | undefined,
     projects: Project[],
     userPlan: PlanTier,
     fullPlan: UserPlan | null,
@@ -30,6 +31,10 @@ export const useProjectActions = (
     setIsPropertiesOpen: React.Dispatch<React.SetStateAction<boolean>>
 ) => {
     const handleCreateNewProject = async (title: string, desc: string) => {
+        if (!userId) {
+            toast.error("Please login to create projects.");
+            return;
+        }
         try {
             const limits = PLAN_LIMITS[userPlan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.FREE;
             if (projects.length >= limits.PROJECTS) {
@@ -38,8 +43,21 @@ export const useProjectActions = (
                 return;
             }
             
-            const newP = await createProject({ title, description: desc });
-            handleOpenProject(newP);
+            const newId = await createProject(userId, { title, description: desc });
+            // We don't have the full project object yet, but we can construct a minimal one for opening
+            const minimalProject: Project = {
+                id: newId,
+                userId,
+                title,
+                description: desc,
+                status: 'DRAFT',
+                nexuses: [],
+                synapses: [],
+                tags: [],
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+            };
+            handleOpenProject(minimalProject);
         } catch (e: any) {
             const limits = PLAN_LIMITS[userPlan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.FREE;
             if (e.message === 'PROJECT_LIMIT_REACHED') {

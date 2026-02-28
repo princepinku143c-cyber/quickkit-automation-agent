@@ -177,7 +177,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ nexus, onClose, onUpd
   );
 
   return (
-    <div className="w-full md:w-96 bg-nexus-900 border-l border-nexus-800 flex flex-col h-full z-20 shadow-2xl absolute right-0 top-0 bottom-0 animate-in slide-in-from-right duration-300">
+    <div className="w-full md:w-96 bg-nexus-900 border-l border-nexus-800 flex flex-col h-full z-[100] md:z-20 shadow-2xl fixed md:absolute right-0 top-0 bottom-0 animate-in slide-in-from-right duration-300">
       <div className="p-4 border-b border-nexus-800 flex items-center justify-between bg-nexus-950">
         <div className="flex items-center gap-3 overflow-hidden">
             <div className={`p-2 rounded-xl bg-nexus-800 text-nexus-accent border border-nexus-700`}>

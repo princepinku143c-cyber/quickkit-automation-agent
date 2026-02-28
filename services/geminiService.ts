@@ -110,7 +110,7 @@ export const chatWithArchitect = async (
   }
   
   const ai = new GoogleGenAI({ apiKey });
-  return await processArchitectRequest(ai, userRequest, history, currentNexuses, currentSynapses, projectContext, imageData);
+  return await processArchitectRequest(userRequest, currentNexuses, currentSynapses, projectContext);
 };
 
 // --- NEW: SPECIALIZED WORKFLOW ANALYSIS ---

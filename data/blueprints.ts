@@ -4,7 +4,7 @@ import { Blueprint, NexusType, NexusSubtype } from '../types';
 export const BLUEPRINTS: Blueprint[] = [
   {
     id: 'bp-linkedin-form',
-    name: 'LinkedIn Viral Post Form',
+    title: 'LinkedIn Viral Post Form',
     description: 'A public form that collects a Topic and Tone, generates a post using AI, and emails you the result. (Try the Public Form!)',
     category: 'Simple Start',
     nexuses: [
@@ -57,7 +57,7 @@ export const BLUEPRINTS: Blueprint[] = [
   },
   {
     id: 'bp-1',
-    name: 'AI Content Generator',
+    title: 'AI Content Generator',
     description: 'Automatically generate SEO-optimized blog posts from a topic and email the draft.',
     category: 'AI',
     nexuses: [
@@ -103,7 +103,7 @@ export const BLUEPRINTS: Blueprint[] = [
   },
   {
     id: 'bp-releasebot',
-    name: 'ReleaseBot (DevOps)',
+    title: 'ReleaseBot (DevOps)',
     description: 'Automate release notes. Fetches Jira tickets, summarizes with AI, pushes to GitHub, and notifies Slack.',
     category: 'Dev / Ops',
     nexuses: [

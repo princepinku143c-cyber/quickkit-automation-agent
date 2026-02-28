@@ -13,14 +13,14 @@ import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage'; 
 import { SettingsModal } from './components/SettingsModal';
 import { Nexus, Synapse, Project, ExecutionState, NexusType, NexusSubtype, PlanTier, UserPlan } from './types';
-import { Play, Cloud, ShieldCheck, Info, Activity, AlertCircle, CheckCircle2, Save, AlertTriangle, Lock, Loader2, PartyPopper, XCircle } from 'lucide-react';
+import { Play, Cloud, ShieldCheck, Info, Activity, AlertCircle, CheckCircle2, Save, AlertTriangle, Lock, Loader2, PartyPopper, XCircle, Menu, X, LayoutGrid } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { useNexusState } from './hooks/useNexusState';
 import { useProjectActions } from './hooks/useProjectActions';
 import { PaymentStatus } from './components/PaymentStatus';
 import { subscribeToProjects, updateProject, createProject, deleteProject } from './services/projectService';
 import { listPromos } from './services/adminService'; 
-import { subscribeToUserProfile, updateUserProfile, debugPromoteUser } from './services/userService'; 
+import { subscribeToUserProfile, updateUserProfile } from './services/userService'; 
 import { canAddNode } from './services/usageGuard'; 
 import { DEFAULT_NODE_SETTINGS, NEXUS_DEFINITIONS, PLAN_LIMITS, getDefaultNodeSettings } from './constants';
 import { Toaster, toast } from 'react-hot-toast';
@@ -116,9 +116,18 @@ const AppContent: React.FC = () => {
     interruptedState, setInterruptedState
   } = useNexusState();
 
-  const [appRoute, setAppRoute] = useState<'landing' | 'auth' | 'app'>('landing');
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
-  const [currentView, setCurrentView] = useState<'dashboard' | 'editor'>('dashboard');
+  const [appRoute, setAppRoute] = useState<'landing' | 'auth' | 'app'>(() => {
+    const path = window.location.pathname;
+    if (path === '/login' || path === '/signup') return 'auth';
+    if (path === '/app' || path === '/dashboard' || path === '/billing' || path === '/settings' || path.startsWith('/workflows')) return 'app';
+    return 'landing';
+  });
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>(() => (window.location.pathname === '/login' ? 'login' : 'signup'));
+  const [currentView, setCurrentView] = useState<'dashboard' | 'editor'>(() => (window.location.pathname.startsWith('/workflows/') ? 'editor' : 'dashboard'));
+  const [requestedWorkflowId, setRequestedWorkflowId] = useState<string | null>(() => {
+    const match = window.location.pathname.match(/^\/workflows\/([^/]+)$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isRunModalOpen, setIsRunModalOpen] = useState(false);
   const [isRegistryOpen, setIsRegistryOpen] = useState(false);
@@ -126,11 +135,12 @@ const AppContent: React.FC = () => {
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
   const [isCredentialManagerOpen, setIsCredentialManagerOpen] = useState(false);
   const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
-  const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
+  const [isPricingModalOpen, setIsPricingModalOpen] = useState(() => window.location.pathname === '/billing');
   const [pricingReason, setPricingReason] = useState<string | undefined>(undefined); 
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false); 
+  const [isSettingsOpen, setIsSettingsOpen] = useState(() => window.location.pathname === '/settings'); 
   const [isDemoOpen, setIsDemoOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   const {
     handleCreateNewProject,
@@ -138,6 +148,7 @@ const AppContent: React.FC = () => {
     handleDeleteProject,
     handleAddNexus
   } = useProjectActions(
+    user?.uid,
     projects, userPlan, fullPlan, nexuses, setNexuses, setSynapses, 
     setCurrentProject, setCurrentView, setSyncStatus, setPricingReason, 
     setIsPricingModalOpen, setSelectedId, setIsPropertiesOpen
@@ -172,19 +183,6 @@ const AppContent: React.FC = () => {
       setIsPropertiesOpen(false);
   }, [setNexuses, setSynapses, setSelectedId, setIsPropertiesOpen]);
 
-  useEffect(() => {
-      const params = new URLSearchParams(window.location.search);
-      const isSuccess = params.get('payment_success') === 'true';
-      const isCancel = params.get('payment_cancel') === 'true';
-
-      if (isSuccess || isCancel) {
-          if (window.opener) {
-              const msgType = isSuccess ? 'NEXUS_PAYMENT_SUCCESS' : 'NEXUS_PAYMENT_CANCEL';
-              window.opener.postMessage({ type: msgType, status: isSuccess ? 'success' : 'cancel' }, window.location.origin);
-              setTimeout(() => window.close(), 500);
-          }
-      }
-  }, []);
 
   useEffect(() => {
       if (user) {
@@ -195,9 +193,6 @@ const AppContent: React.FC = () => {
       }
   }, [user, appRoute]);
 
-  useEffect(() => {
-      (window as any).nexusPromote = debugPromoteUser;
-  }, []);
 
   useEffect(() => {
     const storedPlan = localStorage.getItem('nexus_user_plan');
@@ -247,14 +242,110 @@ const AppContent: React.FC = () => {
       }
   }, [projects, currentProject, handleOpenProject]); 
 
+
+  useEffect(() => {
+      if (!user || !requestedWorkflowId || projects.length === 0) return;
+      const project = projects.find(p => p.id === requestedWorkflowId);
+      if (!project) return;
+
+      handleOpenProject(project);
+      setCurrentView('editor');
+      setRequestedWorkflowId(null);
+  }, [user, requestedWorkflowId, projects, handleOpenProject]);
+
+  useEffect(() => {
+      const query = new URLSearchParams(window.location.search);
+      if (query.get('payment_success') === 'true' || query.get('payment_cancel') === 'true') return;
+
+      const currentPath = window.location.pathname;
+      let nextPath = currentPath;
+
+      if (!user) {
+          nextPath = appRoute === 'auth' ? (authMode === 'login' ? '/login' : '/signup') : '/';
+      } else if (isSettingsOpen) {
+          nextPath = '/settings';
+      } else if (isPricingModalOpen) {
+          nextPath = '/billing';
+      } else if (currentView === 'editor' && currentProject?.id) {
+          nextPath = `/workflows/${encodeURIComponent(currentProject.id)}`;
+      } else {
+          nextPath = '/app';
+      }
+
+      if (nextPath !== currentPath) {
+          window.history.replaceState({}, '', nextPath);
+      }
+  }, [user, appRoute, authMode, isSettingsOpen, isPricingModalOpen, currentView, currentProject]);
+
+
+  useEffect(() => {
+      const onPopState = () => {
+          const path = window.location.pathname;
+
+          if (path === '/login' || path === '/signup') {
+              setAppRoute('auth');
+              setAuthMode(path === '/login' ? 'login' : 'signup');
+              return;
+          }
+
+          if (path === '/') {
+              if (!user) setAppRoute('landing');
+              return;
+          }
+
+          if (path === '/app' || path === '/dashboard') {
+              if (user) {
+                  setAppRoute('app');
+                  setCurrentView('dashboard');
+                  setIsPricingModalOpen(false);
+                  setIsSettingsOpen(false);
+              }
+              return;
+          }
+
+
+          if (path === '/billing') {
+              if (user) {
+                  setAppRoute('app');
+                  setCurrentView('dashboard');
+                  setIsPricingModalOpen(true);
+                  setIsSettingsOpen(false);
+              }
+              return;
+          }
+
+          if (path === '/settings') {
+              if (user) {
+                  setAppRoute('app');
+                  setCurrentView('dashboard');
+                  setIsSettingsOpen(true);
+                  setIsPricingModalOpen(false);
+              }
+              return;
+          }
+
+          const workflowMatch = path.match(/^\/workflows\/([^/]+)$/);
+          if (workflowMatch && user) {
+              setAppRoute('app');
+              setCurrentView('editor');
+              setRequestedWorkflowId(decodeURIComponent(workflowMatch[1]));
+          }
+      };
+
+      window.addEventListener('popstate', onPopState);
+      return () => window.removeEventListener('popstate', onPopState);
+  }, [user]);
+
   // 2. NON-HOOK LOGIC & RENDER GATES
   const handleNavigate = (route: 'signup' | 'login') => {
       setAuthMode(route);
       setAppRoute('auth');
+      window.history.pushState({}, '', route === 'login' ? '/login' : '/signup');
   };
 
   const handleBackToLanding = () => {
       setAppRoute('landing');
+      window.history.pushState({}, '', '/');
   };
 
   const completeOnboarding = async () => {
@@ -290,12 +381,31 @@ const AppContent: React.FC = () => {
   const handleNavigateDashboard = () => {
       setCurrentView('dashboard');
       localStorage.setItem('nexus_last_view', 'dashboard');
+      if (user) window.history.pushState({}, '', '/app');
   };
 
   const params = new URLSearchParams(window.location.search);
   
-  if (params.get('payment_success') === 'true') return <PaymentStatus type="success" />;
-  if (params.get('payment_cancel') === 'true') return <PaymentStatus type="cancel" />;
+  if (params.get('payment_success') === 'true') {
+    const expectedState = sessionStorage.getItem('nexus_paypal_state');
+    const incomingState = params.get('state');
+
+    if (!expectedState || !incomingState || expectedState !== incomingState) {
+      return <PaymentStatus type="cancel" />;
+    }
+
+    sessionStorage.removeItem('nexus_paypal_state');
+    return (
+      <PaymentStatus
+        type="success"
+        orderToken={params.get('token') || undefined}
+      />
+    );
+  }
+  if (params.get('payment_cancel') === 'true') {
+    sessionStorage.removeItem('nexus_paypal_state');
+    return <PaymentStatus type="cancel" />;
+  }
 
   if (!user && appRoute === 'landing') {
       return (
@@ -321,7 +431,7 @@ const AppContent: React.FC = () => {
   // --- APP LOGIC (AUTHENTICATED) ---
 
   return (
-    <div className="flex h-screen bg-[#050505] text-white overflow-hidden relative">
+    <div className="flex h-screen bg-[#050505] text-white overflow-hidden relative font-sans">
       <Toaster position="top-right" toastOptions={{
           style: {
               background: '#1a1a1a',
@@ -392,24 +502,36 @@ const AppContent: React.FC = () => {
       <NexusMascot />
       
       <Sidebar 
-        isOpen={true} 
-        onClose={() => {}} 
-        onAddNexus={handleAddNexus}
-        onLoadBlueprint={(bp) => handleApplyStream(bp.nexuses, bp.synapses)}
+        isOpen={isMobileSidebarOpen} 
+        onClose={() => setIsMobileSidebarOpen(false)} 
+        onAddNexus={(type, subtype, pos) => {
+            handleAddNexus(type, subtype, pos);
+            setIsMobileSidebarOpen(false);
+        }}
+        onLoadBlueprint={(bp) => {
+            handleApplyStream(bp.nexuses, bp.synapses);
+            setIsMobileSidebarOpen(false);
+        }}
         onClear={() => { setNexuses([]); setSynapses([]); }}
-        onOpenSettings={() => setIsSettingsOpen(true)} 
-        onNavigateProjects={handleNavigateDashboard}
+        onOpenSettings={() => { setIsSettingsOpen(true); setIsMobileSidebarOpen(false); }} 
+        onNavigateProjects={() => { handleNavigateDashboard(); setIsMobileSidebarOpen(false); }}
         currentView={currentView}
-        onOpenCredentials={() => setIsCredentialManagerOpen(true)}
-        onOpenRegistry={() => setIsRegistryOpen(true)}
-        onOpenAI={() => setIsAIAssistantOpen(true)}
+        onOpenCredentials={() => { setIsCredentialManagerOpen(true); setIsMobileSidebarOpen(false); }}
+        onOpenRegistry={() => { setIsRegistryOpen(true); setIsMobileSidebarOpen(false); }}
+        onOpenAI={() => { setIsAIAssistantOpen(true); setIsMobileSidebarOpen(false); }}
         userPlan={fullPlan}
       />
 
-      <div className="flex-1 flex flex-col relative h-full">
-        <div className="h-14 bg-nexus-950/90 border-b border-nexus-800 flex items-center justify-between px-6 z-20">
-          <div className="flex items-center gap-4">
-            <h1 className="font-black text-xs uppercase tracking-widest text-gray-400">
+      <div className="flex-1 flex flex-col relative h-full min-w-0">
+        <div className="h-14 bg-nexus-950/90 border-b border-nexus-800 flex items-center justify-between px-4 md:px-6 z-20">
+          <div className="flex items-center gap-3 md:gap-4">
+            <button 
+                onClick={() => setIsMobileSidebarOpen(true)}
+                className="p-2 -ml-2 text-gray-400 hover:text-white md:hidden"
+            >
+                <LayoutGrid size={20} />
+            </button>
+            <h1 className="font-black text-[10px] md:text-xs uppercase tracking-widest text-gray-400 truncate max-w-[150px] md:max-w-none">
                {currentView === 'dashboard' ? 'SYS_WORKSPACE' : currentProject?.title}
             </h1>
             {currentView === 'editor' && (

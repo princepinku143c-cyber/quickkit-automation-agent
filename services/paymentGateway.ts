@@ -135,6 +135,27 @@ export const PaymentGateway = {
          }
     },
 
+    /**
+     * Capture a PayPal Order after approval
+     */
+    async capturePayPalOrder(orderToken: string): Promise<{ success: boolean; message?: string }> {
+        try {
+            const response = await fetch('/api/billing/paypal/captureOrder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderToken })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                return { success: false, message: data.error || "Capture failed" };
+            }
+            return { success: true };
+        } catch (e: any) {
+            console.error("PayPal Capture Error:", e);
+            return { success: false, message: e.message || "Network error during capture" };
+        }
+    },
+
     async requestRefund(paymentId: string, reason: string): Promise<boolean> {
         // Placeholder for refund logic
         return true;
@@ -148,5 +169,26 @@ export const PaymentGateway = {
     async cancelSubscription(id: string, provider: string): Promise<boolean> {
         // Cancellation logic
         return true;
+    },
+
+    /**
+     * Apply a 100% discount coupon directly
+     */
+    async applyFreeCoupon(userId: string, coupon: string, tier: PlanTier, cycle: 'monthly' | 'yearly', currency: 'USD' | 'INR'): Promise<boolean> {
+        try {
+            const response = await fetch('/api/billing/coupon/apply', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, coupon, tier, cycle, currency })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || "Coupon application failed.");
+            }
+            return data.success === true;
+        } catch (e) {
+            console.error("Coupon Application Error:", e);
+            throw e;
+        }
     }
 };

@@ -5,6 +5,7 @@ import {
     LayoutGrid, Activity, Play, FileText, CreditCard, LogOut, HelpCircle, Code, ArrowLeft, Unlock, Settings, Zap, ShieldCheck, Globe
 } from 'lucide-react';
 import { updateProject, getUserProjects } from '../services/projectService';
+import { useAuth } from '../context/AuthContext';
 import { subscribeToLogs } from '../services/cloudStore'; 
 import { PortalDashboard } from './client/PortalDashboard';
 import { PortalRunner } from './client/PortalRunner';
@@ -18,7 +19,7 @@ interface ClientPortalProps {
 }
 
 const ClientPortal: React.FC<ClientPortalProps> = ({ projectId, onClose }) => {
-    const [isAuthenticated, setIsAuthenticated] = useState(true); 
+    const { user } = useAuth();
     const [project, setProject] = useState<Project | null>(null);
     const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'WORKFLOW' | 'RESULTS' | 'BILLING' | 'SETTINGS'>('DASHBOARD');
     const [loading, setLoading] = useState(true);
@@ -26,16 +27,21 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ projectId, onClose }) => {
 
     useEffect(() => {
         const loadProject = async () => {
+            if (!user?.uid) {
+                setLoading(false);
+                return;
+            }
+
             try {
-                const projects = await getUserProjects('dev-mode-user'); 
+                const projects = await getUserProjects(user.uid); 
                 const found = projects.find(p => p.id === projectId);
                 if (found) setProject(found);
             } catch (e) { console.error(e); } finally { setLoading(false); }
         };
         loadProject();
-        const unsubscribeLogs = subscribeToLogs('dev-mode-user', (newLogs) => setLogs(newLogs));
+        const unsubscribeLogs = user?.uid ? subscribeToLogs(user.uid, (newLogs) => setLogs(newLogs)) : (() => {});
         return () => unsubscribeLogs();
-    }, [projectId]);
+    }, [projectId, user?.uid]);
 
     const handleSaveSettings = async (variables: Record<string, any>) => {
         if (!project) return;
@@ -47,6 +53,12 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ projectId, onClose }) => {
         await updateProject(project.id, { settings: updatedProject.settings });
     };
 
+
+    if (!user) return (
+        <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-white">
+            <p className="text-sm text-slate-400">Please login to access this portal.</p>
+        </div>
+    );
     if (loading) return (
         <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-white">
             <div className="w-10 h-10 border-2 border-blue-600/20 border-t-blue-500 rounded-full animate-spin mb-4"></div>
@@ -72,32 +84,31 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ projectId, onClose }) => {
                     </div>
                 </div>
 
-                <div className="flex-1 p-5 space-y-1.5 mt-6">
-                    {[
-                        { id: 'DASHBOARD', icon: Activity, label: 'Control Center' },
-                        { id: 'WORKFLOW', icon: Play, label: 'Execution Hub' },
-                        { id: 'RESULTS', icon: FileText, label: 'Audit Stream' },
-                        { id: 'BILLING', icon: CreditCard, label: 'Metered Usage' },
-                        { id: 'SETTINGS', icon: Globe, label: 'Integrations' }
-                    ].map(item => (
-                        <button 
-                            key={item.id}
-                            onClick={() => setActiveTab(item.id as any)} 
-                            className={`w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-[11px] font-black uppercase tracking-wider transition-all duration-300 group
-                                ${activeTab === item.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-500 hover:bg-white/5 hover:text-white'}`}
-                        >
-                            <item.icon size={18} className={activeTab === item.id ? 'text-white' : 'text-slate-600 group-hover:text-blue-400'}/> 
-                            {item.label}
-                        </button>
-                    ))}
-                </div>
+                <nav className="flex-1 p-6 space-y-2">
+                    <button onClick={() => setActiveTab('DASHBOARD')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'DASHBOARD' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'}`}>
+                        <LayoutGrid size={18}/> Dashboard
+                    </button>
+                    <button onClick={() => setActiveTab('WORKFLOW')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'WORKFLOW' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'}`}>
+                        <Play size={18}/> Run Workflow
+                    </button>
+                    <button onClick={() => setActiveTab('RESULTS')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'RESULTS' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'}`}>
+                        <Activity size={18}/> Execution Logs
+                    </button>
+                    <button onClick={() => setActiveTab('BILLING')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'BILLING' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'}`}>
+                        <CreditCard size={18}/> Usage & Billing
+                    </button>
+                    <button onClick={() => setActiveTab('SETTINGS')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'SETTINGS' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'}`}>
+                        <Settings size={18}/> Portal Settings
+                    </button>
+                </nav>
 
-                <div className="p-6 border-t border-white/5 space-y-4">
-                    <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl">
-                        <div className="flex items-center gap-2 text-blue-400 text-[10px] font-black uppercase mb-1.5">
-                            <ShieldCheck size={12}/> System Health 99.9%
+                <div className="p-6 border-t border-white/5">
+                    <div className="bg-white/5 rounded-2xl p-4 mb-4">
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-[10px] font-black text-slate-500 uppercase">API Quota</span>
+                            <span className="text-[10px] font-black text-blue-400 uppercase">99.9%</span>
                         </div>
-                        <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                        <div className="h-1 bg-white/10 rounded-full overflow-hidden">
                             <div className="h-full bg-blue-500 w-[99.9%]"></div>
                         </div>
                     </div>
@@ -123,7 +134,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ projectId, onClose }) => {
 
                 <div className="animate-in fade-in slide-in-from-bottom-6 duration-1000">
                     {activeTab === 'DASHBOARD' && <PortalDashboard logs={logs} project={project} />}
-                    {activeTab === 'WORKFLOW' && project && <PortalRunner project={project} onSaveSettings={handleSaveSettings} />}
+                    {activeTab === 'WORKFLOW' && project && <PortalRunner project={project} onSaveSettings={handleSaveSettings} userId={user?.uid || 'guest'} />}
                     {activeTab === 'RESULTS' && <PortalHistory logs={logs} />}
                     {activeTab === 'BILLING' && <PortalBilling logs={logs} />}
                     {activeTab === 'SETTINGS' && <PortalSettings projectId={projectId} />}

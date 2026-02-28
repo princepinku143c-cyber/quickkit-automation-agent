@@ -23,6 +23,7 @@ const PricingModal: React.FC<PricingModalProps> = ({
   const [step, setStep] = useState<"plans" | "checkout">("plans");
   const [selected, setSelected] = useState<"PRO" | "BUSINESS" | null>(null);
   const [currency, setCurrency] = useState<"USD" | "INR">("USD");
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [couponCode, setCouponCode] = useState("");
@@ -31,16 +32,16 @@ const PricingModal: React.FC<PricingModalProps> = ({
 
   const planData = useMemo(() => ({
     PRO: {
-      basePrice: currency === 'USD' ? 49 : 3999,
+      basePrice: currency === 'USD' ? (billingCycle === 'monthly' ? 49 : 490) : (billingCycle === 'monthly' ? 3999 : 39990),
       symbol: currency === 'USD' ? '$' : '₹',
       glow: "shadow-[0_0_40px_rgba(0,255,200,0.4)] border-cyan-400"
     },
     BUSINESS: {
-      basePrice: currency === 'USD' ? 99 : 8999,
+      basePrice: currency === 'USD' ? (billingCycle === 'monthly' ? 99 : 990) : (billingCycle === 'monthly' ? 8999 : 89990),
       symbol: currency === 'USD' ? '$' : '₹',
       glow: "shadow-[0_0_40px_rgba(255,200,0,0.4)] border-yellow-400"
     }
-  }), [currency]);
+  }), [currency, billingCycle]);
 
   const finalPrice = useMemo(() => {
     if (!selected) return 0;
@@ -75,55 +76,35 @@ const PricingModal: React.FC<PricingModalProps> = ({
       
       setLoading(true);
 
-      // 🔥 DEV BYPASS: Instant Upgrade
-      const { isDevMode } = (window as any).authContext || {}; // We'll need to expose this or use a global
-      if (user?.uid === 'dev-bypass-user-999') {
-          setTimeout(() => {
-              onUpgrade({
-                  uid: user.uid,
-                  email: user.email,
-                  tier: selected,
-                  role: 'ADMIN',
-                  status: 'active',
-                  credits: 999999,
-                  aiUsed: 0,
-                  monthlyLimit: 999999,
-                  onboardingDone: true,
-                  updatedAt: Date.now(),
-                  expiresAt: Date.now() + (30 * 24 * 60 * 60 * 1000)
-              });
+      if (finalPrice <= 0 && appliedCoupon) {
+          try {
+              const success = await PaymentGateway.applyFreeCoupon(
+                  user?.uid || 'guest',
+                  appliedCoupon.code,
+                  selected,
+                  billingCycle,
+                  currency
+              );
+              if (success) {
+                  toast.success("Plan Upgraded Successfully!");
+                  window.location.reload();
+              }
+          } catch (e: any) {
+              toast.error(e.message || "Coupon activation failed.");
+          } finally {
               setLoading(false);
-          }, 1000);
+          }
           return;
       }
-
-      // 🔥 100% OFF COUPON BYPASS
-      if (finalPrice === 0) {
-          setTimeout(() => {
-              onUpgrade({
-                  uid: user?.uid,
-                  email: user?.email,
-                  tier: selected,
-                  status: 'active',
-                  credits: selected === 'PRO' ? 5000 : 20000,
-                  aiUsed: 0,
-                  monthlyLimit: selected === 'PRO' ? 5000 : 20000,
-                  onboardingDone: true,
-                  updatedAt: Date.now(),
-                  expiresAt: Date.now() + (30 * 24 * 60 * 60 * 1000)
-              });
-              setLoading(false);
-              toast.success("Upgrade Successful via Promo Code!");
-          }, 1000);
-          return;
-      }
-
       try {
           if (currency === 'USD') {
               // --- PAYPAL FLOW (Global) ---
-              const res = await PaymentGateway.createPayPalOrder(selected, 'monthly', appliedCoupon?.code);
+              const res = await PaymentGateway.createPayPalOrder(selected, billingCycle, appliedCoupon?.code);
               if (res.approvalUrl) {
-                  window.location.href = res.approvalUrl;
+                  const paypalWindow = window.open(res.approvalUrl, 'nexus-paypal-checkout', 'popup=yes,width=520,height=720');
+                  if (!paypalWindow) {
+                      window.location.href = res.approvalUrl;
+                  }
               } else {
                   throw new Error("No approval URL");
               }
@@ -132,7 +113,7 @@ const PricingModal: React.FC<PricingModalProps> = ({
               const region = 'IN';
               
               // 1. Create Order
-              const order = await PaymentGateway.createOrder(selected, 'monthly', region, appliedCoupon?.code);
+              const order = await PaymentGateway.createOrder(selected, billingCycle, region, appliedCoupon?.code);
               
               // 2. Open Modal
               await PaymentGateway.openRazorpay(
@@ -166,42 +147,59 @@ const PricingModal: React.FC<PricingModalProps> = ({
   return (
     <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in duration-200">
 
-      <div className="w-full max-w-[820px] bg-[#050505] border border-white/10 rounded-3xl p-8 md:p-12 relative shadow-2xl">
+      <div className="w-full max-w-[820px] bg-[#050505] border border-white/10 rounded-3xl p-6 md:p-12 relative shadow-2xl overflow-y-auto max-h-[95vh] custom-scrollbar">
 
         {/* HEADER */}
-        <div className="flex justify-between items-center mb-10">
+        <div className="flex flex-col md:flex-row justify-between items-start mb-8 md:mb-12 gap-6">
           <div className="flex items-center gap-4">
-            <Crown className="text-cyan-400" size={26} />
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-nexus-accent/10 rounded-xl md:rounded-2xl flex items-center justify-center border border-nexus-accent/20">
+                <Zap className="text-nexus-accent md:w-6 md:h-6" size={20} fill="currentColor" />
+            </div>
             <div>
-                <h2 className="text-2xl font-black tracking-widest text-white leading-none">
-                UPGRADE PLAN
+                <h2 className="text-xl md:text-2xl font-black tracking-widest text-white leading-none uppercase">
+                Upgrade Plan
                 </h2>
-                {triggerReason && <p className="text-xs text-red-400 mt-1 font-bold">{triggerReason}</p>}
+                {triggerReason && <p className="text-[10px] md:text-xs text-red-400 mt-1 font-bold">{triggerReason}</p>}
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3 md:gap-4 w-full md:w-auto">
               {/* CURRENCY TOGGLE */}
-              <div className="flex bg-nexus-900 p-1 rounded-lg border border-nexus-800">
+              <div className="flex bg-nexus-900 p-1 rounded-lg border border-nexus-800 flex-1 md:flex-none">
                   <button 
                     onClick={() => setCurrency('USD')}
-                    className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition-all ${currency === 'USD' ? 'bg-white text-black shadow' : 'text-gray-500 hover:text-white'}`}
+                    className={`flex-1 md:flex-none px-3 py-1.5 rounded-md text-[9px] md:text-[10px] font-bold transition-all ${currency === 'USD' ? 'bg-white text-black shadow' : 'text-gray-500 hover:text-white'}`}
                   >
                       USD ($)
                   </button>
                   <button 
                     onClick={() => setCurrency('INR')}
-                    className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition-all ${currency === 'INR' ? 'bg-white text-black shadow' : 'text-gray-500 hover:text-white'}`}
+                    className={`flex-1 md:flex-none px-3 py-1.5 rounded-md text-[9px] md:text-[10px] font-bold transition-all ${currency === 'INR' ? 'bg-white text-black shadow' : 'text-gray-500 hover:text-white'}`}
                   >
                       INR (₹)
                   </button>
               </div>
 
+              <div className="flex bg-nexus-900 p-1 rounded-lg border border-nexus-800 flex-1 md:flex-none">
+                  <button
+                    onClick={() => setBillingCycle('monthly')}
+                    className={`flex-1 md:flex-none px-3 py-1.5 rounded-md text-[9px] md:text-[10px] font-bold transition-all ${billingCycle === 'monthly' ? 'bg-white text-black shadow' : 'text-gray-500 hover:text-white'}`}
+                  >
+                      Monthly
+                  </button>
+                  <button
+                    onClick={() => setBillingCycle('yearly')}
+                    className={`flex-1 md:flex-none px-3 py-1.5 rounded-md text-[9px] md:text-[10px] font-bold transition-all ${billingCycle === 'yearly' ? 'bg-white text-black shadow' : 'text-gray-500 hover:text-white'}`}
+                  >
+                      Yearly
+                  </button>
+              </div>
+
               <button
                 onClick={onClose}
-                className="text-gray-400 hover:text-white p-2 hover:bg-white/10 rounded-full transition-all"
+                className="absolute top-6 right-6 md:static text-gray-400 hover:text-white p-2 hover:bg-white/10 rounded-full transition-all"
               >
-                <X size={24} />
+                <X size={20} className="md:w-6 md:h-6" />
               </button>
           </div>
         </div>
@@ -216,7 +214,7 @@ const PricingModal: React.FC<PricingModalProps> = ({
                 onClick={() => setSelected("PRO")}
                 className={`cursor-pointer p-8 md:p-10 rounded-3xl border transition-all duration-300 bg-[#0a0a0a] 
                 ${
-                  selected === "PRO"
+                   selected === "PRO"
                     ? planData.PRO.glow
                     : "border-white/10 hover:border-cyan-500 hover:shadow-[0_0_20px_rgba(0,255,200,0.2)]"
                 }`}
@@ -228,6 +226,7 @@ const PricingModal: React.FC<PricingModalProps> = ({
                 <p className="text-5xl font-black text-white mb-4">
                   {planData.PRO.symbol}{planData.PRO.basePrice}
                 </p>
+                <p className="text-xs text-gray-500 mb-4">/{billingCycle === 'monthly' ? 'month' : 'year'}</p>
                 <ul className="text-gray-400 space-y-2 text-sm">
                   <li>• 5,000 Runs / mo</li>
                   <li>• 100 Active Nodes</li>
@@ -252,6 +251,7 @@ const PricingModal: React.FC<PricingModalProps> = ({
                 <p className="text-5xl font-black text-white mb-4">
                   {planData.BUSINESS.symbol}{planData.BUSINESS.basePrice}
                 </p>
+                <p className="text-xs text-gray-500 mb-4">/{billingCycle === 'monthly' ? 'month' : 'year'}</p>
                 <ul className="text-gray-400 space-y-2 text-sm">
                   <li>• Unlimited Runs</li>
                   <li>• 999 Active Nodes</li>
@@ -289,6 +289,7 @@ const PricingModal: React.FC<PricingModalProps> = ({
                 <h3 className={`text-6xl font-black mb-2 ${selected === 'PRO' ? 'text-cyan-400' : 'text-yellow-400'}`}>
                 {planData[selected].symbol}{finalPrice}
                 </h3>
+                <p className="text-xs text-gray-500 mb-2">Billed {billingCycle}</p>
 
                 {appliedCoupon && (
                     <div className="flex items-center justify-center gap-2 text-nexus-accent text-[10px] font-bold uppercase mb-2">
@@ -316,8 +317,8 @@ const PricingModal: React.FC<PricingModalProps> = ({
                         type="text" 
                         value={couponCode}
                         onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                        placeholder="COUPON CODE"
-                        className="flex-1 bg-nexus-900 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-cyan-400 outline-none uppercase font-bold"
+                        placeholder="PROMO CODE"
+                        className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs font-bold tracking-widest focus:outline-none focus:border-nexus-accent/50 transition-all"
                     />
                     <button 
                         onClick={handleApplyCoupon}
@@ -354,17 +355,8 @@ const PricingModal: React.FC<PricingModalProps> = ({
                   <Loader2 size={20} className="animate-spin" />
               ) : (
                     <>
-                      {user?.uid === 'dev-bypass-user-999' ? (
-                          <>
-                            <ShieldCheck size={18} />
-                            BYPASS PAYMENT (DEV MODE)
-                          </>
-                      ) : (
-                          <>
-                            {currency === 'USD' ? <Globe size={18} /> : <CreditCard size={18} />}
-                            PAY WITH {currency === 'USD' ? 'PAYPAL' : 'RAZORPAY'}
-                          </>
-                      )}
+                      {currency === 'USD' ? <Globe size={18} /> : <CreditCard size={18} />}
+                      PAY WITH {currency === 'USD' ? 'PAYPAL' : 'RAZORPAY'}
                       <ArrowRight size={18} />
                     </>
               )}

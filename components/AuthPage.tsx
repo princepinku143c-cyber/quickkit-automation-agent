@@ -9,7 +9,7 @@ interface AuthPageProps {
 }
 
 const AuthPage: React.FC<AuthPageProps> = ({ view, onBack }) => {
-    const { signInWithGoogle, loading, authError, bypassAuth } = useAuth();
+    const { signInWithGoogle, loading, authError, canUseLocalBypass, localBypassLogin } = useAuth();
     const [isAuthenticating, setIsAuthenticating] = useState(false);
 
     const handleGoogleLogin = async () => {
@@ -35,30 +35,34 @@ const AuthPage: React.FC<AuthPageProps> = ({ view, onBack }) => {
             </div>
 
             <div className="flex-1 flex items-center justify-center p-6 relative z-10">
-                <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-8 duration-700">
-                    
-                    {/* Header */}
-                    <div className="text-center mb-10">
-                        <div className="w-16 h-16 bg-nexus-900 border border-white/10 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-[0_0_40px_-10px_rgba(0,255,157,0.3)]">
-                            <Zap size={32} className="text-nexus-accent" fill="currentColor" />
+                <div className="w-full max-w-md animate-in fade-in zoom-in-95 duration-500">
+                    {/* Logo Area */}
+                    <div className="text-center mb-12">
+                        <div className="w-20 h-20 bg-nexus-accent/10 rounded-[32px] border border-nexus-accent/20 flex items-center justify-center mx-auto mb-6 shadow-[0_0_50px_rgba(0,255,157,0.1)]">
+                            <Zap size={40} className="text-nexus-accent" fill="currentColor" />
                         </div>
-                        <h1 className="text-3xl font-black mb-2 tracking-tight">
-                            {view === 'signup' ? 'Create Account' : 'Welcome Back'}
+                        <h1 className="text-4xl font-black tracking-tighter text-white uppercase italic">
+                            Nexus<span className="text-nexus-accent">Stream</span>
                         </h1>
-                        <p className="text-gray-500 text-sm">
-                            {view === 'signup' 
-                                ? 'Start designing intelligent workflows in seconds.' 
-                                : 'Enter your workspace credentials.'}
+                        <p className="text-gray-500 text-xs font-bold uppercase tracking-[0.3em] mt-2">
+                            Architecting Intelligence
                         </p>
                     </div>
 
-                    {/* Auth Box */}
-                    <div className="bg-[#0a0a0a] border border-white/10 rounded-[32px] p-2 shadow-2xl">
-                        <div className="bg-[#0f0f0f] rounded-[24px] p-8 space-y-6 border border-white/5">
-                            
-                            {/* Error Display */}
+                    {/* Card */}
+                    <div className="bg-white/[0.02] border border-white/5 rounded-[40px] p-10 backdrop-blur-xl shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-nexus-accent to-transparent opacity-50"></div>
+                        
+                        <div className="space-y-8">
+                            <div className="text-center">
+                                <h2 className="text-xl font-black text-white uppercase tracking-widest">
+                                    {view === 'login' ? 'Welcome Back' : 'Create Account'}
+                                </h2>
+                                <p className="text-gray-500 text-xs mt-2">Access your automation workspace</p>
+                            </div>
+
                             {authError && (
-                                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3 text-red-200 text-xs">
+                                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-start gap-3 text-xs text-red-400 leading-relaxed animate-in shake duration-300">
                                     <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
                                     <span>{authError}</span>
                                 </div>
@@ -84,14 +88,14 @@ const AuthPage: React.FC<AuthPageProps> = ({ view, onBack }) => {
                                 <p className="text-[10px] text-gray-600 font-medium uppercase tracking-widest">
                                     Trusted by 10,000+ Architects
                                 </p>
-                                
-                                {/* ⚡ HIDDEN BYPASS FOR TESTING */}
-                                <button 
-                                    onClick={bypassAuth}
-                                    className="mt-4 text-[8px] text-gray-800 hover:text-nexus-accent transition-colors uppercase tracking-[0.3em] font-black"
-                                >
-                                    Initialize Dev Bypass
-                                </button>
+                                {canUseLocalBypass && (
+                                    <button
+                                      onClick={localBypassLogin}
+                                      className="mt-4 text-[9px] text-yellow-500/80 hover:text-yellow-400 transition-colors uppercase tracking-[0.2em] font-black"
+                                    >
+                                      Local QA Bypass (Dev Only)
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>

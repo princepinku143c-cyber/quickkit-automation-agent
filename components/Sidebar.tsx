@@ -1,16 +1,39 @@
 
-import React, { Suspense, useState } from 'react';
-import { BLUEPRINTS } from '../data/blueprints'; 
-import { NexusSubtype, NexusType, Blueprint, Nexus, Synapse, UserPlan } from '../types';
-import { Layers, ArrowRight, Zap, Building2, Globe, Brain, Split, GitMerge, HardDrive, Database, Terminal, MessageCircle, LayoutGrid, User, Key, LogIn, LogOut, Loader2, Crown, ShieldCheck, Search, Box, Cpu, Sparkles, Gift, ListFilter, Settings, Activity } from 'lucide-react';
+import React, { useState, Suspense } from 'react';
+import { 
+  LayoutGrid, 
+  Zap, 
+  Settings, 
+  LogOut, 
+  Plus, 
+  Trash2, 
+  ChevronLeft, 
+  ChevronRight, 
+  Search, 
+  Sparkles, 
+  Rocket, 
+  Layers, 
+  CreditCard, 
+  ShieldCheck, 
+  Globe, 
+  HelpCircle,
+  Brain,
+  Split,
+  FileCode,
+  Database,
+  Workflow,
+  ArrowRight,
+  Crown
+} from 'lucide-react';
+import { Blueprint, NexusType, NexusSubtype, UserPlan, Nexus, Synapse } from '../types';
+import { BLUEPRINTS } from '../data/blueprints';
 import { useAuth } from '../context/AuthContext';
-import { isAdmin } from '../services/adminGuard'; 
-import MarketplaceModal from './MarketplaceModal'; 
-import ReferralModal from './ReferralModal'; 
-import AdminDashboard from './AdminDashboard'; 
-import NodeLibrary from './sidebar/NodeLibrary'; 
+import { isAdmin } from '../services/adminService';
 import { PLAN_LIMITS } from '../constants';
 
+const AdminDashboard = React.lazy(() => import('./AdminDashboard'));
+const MarketplaceModal = React.lazy(() => import('./MarketplaceModal'));
+const ReferralModal = React.lazy(() => import('./ReferralModal'));
 const PricingModal = React.lazy(() => import('./PricingModal'));
 
 interface SidebarProps {
@@ -38,7 +61,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBl
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState(''); 
 
-  const { user, signInWithGoogle, logout, isDevMode } = useAuth();
+  const { user, signInWithGoogle, logout } = useAuth();
 
   const handleLogin = async () => {
       if (isSigningIn) return;
@@ -66,7 +89,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBl
   };
 
   // 🔥 REAL ROLE CHECK
-  const canAccessAdmin = isDevMode || isAdmin(userPlan || null);
+  const canAccessAdmin = isAdmin(userPlan || null);
 
   // 🔥 CALCULATE USAGE STATS FOR WIDGET
   const currentTier = userPlan?.tier || 'FREE';
@@ -92,190 +115,232 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onAddNexus, onLoadBl
       )}
 
       <div className={`
-          fixed inset-y-0 left-0 z-40 w-72 bg-nexus-900 border-r border-nexus-800 flex flex-col h-full shadow-xl transition-transform duration-300
-          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-          md:relative md:translate-x-0 md:flex
+        fixed md:relative z-40 h-full bg-[#050505] border-r border-white/5 flex flex-col transition-all duration-500 ease-in-out
+        ${isOpen ? 'w-80 translate-x-0' : 'w-0 -translate-x-full md:w-80 md:translate-x-0'}
       `}>
         {/* Header */}
-        <div className="p-4 border-b border-nexus-800 flex justify-between items-center bg-nexus-950">
-            <h1 className="font-display font-bold text-xl text-white tracking-wide">
-                <span className="text-nexus-accent">Nexus</span>Stream
-            </h1>
-            <button onClick={onOpenAI} className="p-1.5 bg-nexus-accent text-black rounded-lg group shadow-[0_0_15px_rgba(0,255,157,0.3)] hover:scale-105 transition-all" title="AI Architect">
-                <Sparkles size={16} fill="currentColor" />
-            </button>
-        </div>
-
-        {/* Global Navigation */}
-        <div className="p-3 border-b border-nexus-800 grid grid-cols-2 gap-1">
+        <div className="p-6 border-b border-white/5 flex items-center justify-between bg-nexus-950/50">
+          <div className="flex items-center gap-3">
             <button 
-                onClick={onNavigateProjects}
-                className={`p-2 rounded-lg text-[9px] font-bold uppercase flex flex-col items-center justify-center gap-1 transition-all ${currentView === 'dashboard' ? 'bg-nexus-accent text-black' : 'bg-nexus-800 text-gray-400 hover:text-white'}`}
+                onClick={onClose}
+                className="p-2 -ml-2 text-gray-500 hover:text-white md:hidden"
             >
-                <LayoutGrid size={14} /> Projects
+                <ChevronLeft size={20} />
             </button>
-            <button 
-                 disabled={currentView === 'dashboard'} 
-                 className={`p-2 rounded-lg text-[9px] font-bold uppercase flex flex-col items-center justify-center gap-1 transition-all ${currentView === 'editor' ? 'bg-nexus-wire text-black' : 'bg-nexus-950 text-gray-600 cursor-not-allowed'}`}
-            >
-                <Layers size={14} /> Editor
-            </button>
-        </div>
-
-        {/* Credentials Row */}
-        <div className="px-3 py-2 border-b border-nexus-800 grid grid-cols-3 gap-2">
-             <button 
-                onClick={onOpenCredentials}
-                className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg bg-nexus-900 hover:bg-nexus-800 text-[8px] font-black text-gray-400 hover:text-white transition-colors uppercase"
-             >
-                 <Key size={12}/> Secrets
-             </button>
-             <button 
-                onClick={() => setIsMarketplaceOpen(true)}
-                className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg bg-nexus-900 hover:bg-nexus-800 text-[8px] font-black text-nexus-accent border border-nexus-800 hover:border-nexus-accent transition-colors uppercase"
-             >
-                 <Box size={12}/> Market
-             </button>
-             <button 
-                onClick={onOpenRegistry}
-                className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg bg-nexus-900 hover:bg-nexus-800 text-[8px] font-black text-blue-400 hover:text-white transition-colors uppercase"
-             >
-                 <Cpu size={12}/> Kernel
-             </button>
-        </div>
-
-        {/* Editor Content */}
-        {currentView === 'editor' ? (
-        <>
-            <div className="flex border-b border-nexus-800 mt-2">
-                <button onClick={() => setActiveTab('blocks')} className={`flex-1 p-3 text-[10px] font-bold flex items-center justify-center gap-1 ${activeTab === 'blocks' ? 'bg-nexus-800 text-nexus-accent border-b-2 border-nexus-accent' : 'text-gray-500'}`}>BLOCKS</button>
-                <button onClick={() => setActiveTab('blueprints')} className={`flex-1 p-3 text-[10px] font-bold flex items-center justify-center gap-1 ${activeTab === 'blueprints' ? 'bg-nexus-800 text-nexus-accent border-b-2 border-nexus-accent' : 'text-gray-500'}`}>TEMPLATES</button>
+            <div className="w-10 h-10 bg-nexus-accent/10 rounded-xl flex items-center justify-center border border-nexus-accent/20 shadow-[0_0_20px_rgba(0,255,157,0.1)]">
+              <Zap className="text-nexus-accent" size={20} fill="currentColor" />
             </div>
+            <div>
+              <h1 className="font-black text-white text-sm tracking-widest uppercase leading-none">NexusCore</h1>
+              <p className="text-[9px] text-gray-500 font-bold uppercase mt-1 tracking-wider">v2.4.0 Stable</p>
+            </div>
+          </div>
+          <button onClick={onNavigateProjects} className="p-2 text-gray-500 hover:text-white transition-colors">
+            <LayoutGrid size={18} />
+          </button>
+        </div>
 
-            {activeTab === 'blocks' && (
-                <NodeLibrary 
-                    onAddNexus={onAddNexus} 
-                    onUpgradeClick={() => setIsPricingOpen(true)} 
-                    isDevMode={false} 
+        {/* User Profile Area */}
+        <div className="p-6 border-b border-white/5">
+          {user ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-nexus-accent/10 border border-nexus-accent/20 flex items-center justify-center overflow-hidden">
+                  {user.photoURL ? <img src={user.photoURL} alt="P" className="w-full h-full object-cover" /> : <Layers size={20} className="text-nexus-accent" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-black text-white truncate uppercase tracking-wider">{user.displayName || 'Architect'}</p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${currentTier === 'FREE' ? 'bg-gray-500' : 'bg-nexus-accent'}`}></span>
+                    <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">{currentTier} ACCESS</p>
+                  </div>
+                </div>
+                <button onClick={onOpenSettings} className="p-2 text-gray-600 hover:text-white transition-colors">
+                  <Settings size={16} />
+                </button>
+              </div>
+
+              {/* Usage Widget */}
+              <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-[9px] font-black text-gray-600 uppercase tracking-widest">Monthly Quota</span>
+                  <span className="text-[9px] font-black text-nexus-accent uppercase">{runsUsed} / {runsTotal}</span>
+                </div>
+                <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-nexus-accent transition-all duration-1000" 
+                    style={{ width: `${usagePercent}%` }}
+                  />
+                </div>
+                {currentTier === 'FREE' && (
+                  <button 
+                    onClick={() => setIsPricingOpen(true)}
+                    className="w-full mt-3 py-2 bg-nexus-accent/10 hover:bg-nexus-accent text-nexus-accent hover:text-black text-[9px] font-black uppercase tracking-widest rounded-lg transition-all border border-nexus-accent/20"
+                  >
+                    Upgrade for Unlimited
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <button 
+              onClick={handleLogin}
+              disabled={isSigningIn}
+              className="w-full py-4 bg-white text-black rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 hover:bg-nexus-accent transition-all shadow-lg"
+            >
+              {isSigningIn ? <Rocket className="animate-bounce" size={16} /> : <Globe size={16} />}
+              Initialize Session
+            </button>
+          )}
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex p-2 bg-black/40 border-b border-white/5">
+          <button 
+            onClick={() => setActiveTab('blocks')}
+            className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'blocks' ? 'bg-white/5 text-white' : 'text-gray-600 hover:text-gray-400'}`}
+          >
+            Components
+          </button>
+          <button 
+            onClick={() => setActiveTab('blueprints')}
+            className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'blueprints' ? 'bg-white/5 text-white' : 'text-gray-600 hover:text-gray-400'}`}
+          >
+            Blueprints
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="p-4">
+            <div className="relative group">
+                <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-nexus-accent transition-colors" />
+                <input 
+                    type="text"
+                    placeholder="SEARCH PROTOCOLS..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-white/5 border border-white/5 rounded-xl py-3 pl-10 pr-4 text-[10px] font-bold text-white placeholder:text-gray-700 focus:outline-none focus:border-nexus-accent/30 transition-all uppercase tracking-widest"
                 />
-            )}
-                
-            {activeTab === 'blueprints' && (
-                <div className="flex-1 overflow-y-auto p-3 space-y-4 custom-scrollbar">
-                    <div className="relative mb-2">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={14} />
-                        <input 
-                            type="text" 
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            placeholder="Search templates..."
-                            className="w-full bg-nexus-900 border border-nexus-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:border-nexus-accent outline-none"
-                        />
-                    </div>
+            </div>
+        </div>
 
-                    <div className="space-y-4">
-                        {Object.entries(groupedBlueprints).map(([category, blueprints]) => {
-                            const visibleBps = blueprints.filter(bp => bp.name.toLowerCase().includes(searchTerm.toLowerCase()));
-                            if (visibleBps.length === 0) return null;
-
-                            return (
-                                <div key={category}>
-                                    <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2 px-2">
-                                        {getCategoryIcon(category)} {category}
-                                    </h3>
-                                    <div className="space-y-2">
-                                        {visibleBps.map(bp => (
-                                            <div key={bp.id} className="p-3 rounded-xl bg-nexus-800/30 border border-nexus-800 group hover:border-nexus-500 transition-all">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <h4 className="font-bold text-xs text-white leading-tight">{bp.name}</h4>
-                                                </div>
-                                                <button onClick={() => onLoadBlueprint(bp)} className="w-full py-1.5 bg-nexus-900 group-hover:bg-nexus-accent group-hover:text-black border border-nexus-700 rounded-lg text-[9px] font-bold uppercase transition-all flex items-center justify-center gap-1">
-                                                    Deploy <ArrowRight size={10} />
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
+        {/* Content Area */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-8">
+          {activeTab === 'blocks' ? (
+            <div className="space-y-8">
+              {/* Architect AI Entry */}
+              <div 
+                onClick={onOpenAI}
+                className="group cursor-pointer p-5 bg-gradient-to-br from-nexus-accent/20 to-transparent border border-nexus-accent/30 rounded-3xl hover:border-nexus-accent transition-all duration-500 relative overflow-hidden"
+              >
+                <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <Brain size={60} />
                 </div>
-            )}
-        </>
-        ) : (
-             <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
-                <div className="w-16 h-16 bg-nexus-800 rounded-full flex items-center justify-center">
-                    <LayoutGrid size={32} className="text-nexus-500" />
+                <div className="flex items-center gap-3 mb-3">
+                    <div className="w-8 h-8 bg-nexus-accent text-black rounded-lg flex items-center justify-center shadow-[0_0_20px_rgba(0,255,157,0.4)]">
+                        <Sparkles size={16} />
+                    </div>
+                    <h3 className="text-[11px] font-black text-white uppercase tracking-widest">Architect AI</h3>
                 </div>
-                <h3 className="text-sm font-bold text-gray-300">Project Dashboard</h3>
-             </div>
-        )}
+                <p className="text-[10px] text-nexus-accent/70 font-bold leading-relaxed">Describe your logic goal and let AI build the workflow for you.</p>
+                <div className="mt-4 flex items-center gap-2 text-[9px] font-black text-white uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all translate-x-[-10px] group-hover:translate-x-0">
+                    Launch Protocol <ArrowRight size={12} />
+                </div>
+              </div>
 
-        {/* User Profile & STATUS WIDGET */}
-        <div className="p-4 border-t border-nexus-800 bg-nexus-950 space-y-4">
-             {user ? (
-                 <>
-                     {/* 🔥 USAGE STATUS WIDGET */}
-                     <div className="bg-nexus-900 border border-nexus-800 rounded-xl p-3 space-y-2">
-                         <div className="flex justify-between items-center text-[10px] font-bold uppercase text-gray-500">
-                             <div className="flex items-center gap-1"><Activity size={10}/> {currentTier} Plan</div>
-                             <div className={usagePercent > 80 ? "text-red-500" : "text-green-400"}>
-                                 {runsUsed} / {runsTotal} Runs
-                             </div>
-                         </div>
-                         <div className="w-full h-1.5 bg-nexus-950 rounded-full overflow-hidden">
-                             <div 
-                                className={`h-full rounded-full transition-all duration-500 ${usagePercent > 80 ? 'bg-red-500' : 'bg-nexus-accent'}`} 
-                                style={{ width: `${usagePercent}%` }}
-                             />
-                         </div>
-                         {currentTier !== 'FREE' && (
-                             <div className="text-[9px] text-gray-600 font-mono text-right">
-                                 Exp: {expiryDate}
-                             </div>
-                         )}
-                         {currentTier === 'FREE' && usagePercent > 80 && (
-                             <button onClick={() => setIsPricingOpen(true)} className="w-full text-[9px] font-bold text-black bg-nexus-accent rounded py-1 uppercase hover:bg-white transition-colors">
-                                 Upgrade Now
-                             </button>
-                         )}
-                     </div>
+              {/* Standard Components */}
+              <div className="space-y-6">
+                <div className="flex items-center gap-2 px-2">
+                    <Layers size={14} className="text-gray-600" />
+                    <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Core Modules</h4>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                    <BlockItem icon={<Zap size={14}/>} label="Trigger" onClick={() => onAddNexus(NexusType.TRIGGER, NexusSubtype.WEBHOOK)} />
+                    <BlockItem icon={<Brain size={14}/>} label="AI Agent" onClick={() => onAddNexus(NexusType.ACTION, NexusSubtype.AI_AGENT)} />
+                    <BlockItem icon={<Split size={14}/>} label="Router" onClick={() => onAddNexus(NexusType.LOGIC, NexusSubtype.ROUTER)} />
+                    <BlockItem icon={<Database size={14}/>} label="Storage" onClick={() => onAddNexus(NexusType.ACTION, NexusSubtype.DB_OPERATION)} />
+                    <BlockItem icon={<FileCode size={14}/>} label="Script" onClick={() => onAddNexus(NexusType.ACTION, NexusSubtype.CUSTOM_JS)} />
+                    <BlockItem icon={<Workflow size={14}/>} label="Loop" onClick={() => onAddNexus(NexusType.LOGIC, NexusSubtype.LOOP)} />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-10">
+              {Object.entries(groupedBlueprints).map(([category, blueprints]) => (
+                <div key={category} className="space-y-4">
+                  <div className="flex items-center gap-2 px-2">
+                    {getCategoryIcon(category)}
+                    <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">{category}</h4>
+                  </div>
+                  <div className="space-y-3">
+                    {blueprints.map(bp => (
+                      <div 
+                        key={bp.id}
+                        onClick={() => onLoadBlueprint(bp)}
+                        className="group cursor-pointer p-4 bg-white/[0.02] border border-white/5 rounded-2xl hover:border-white/20 hover:bg-white/[0.04] transition-all"
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                            <h5 className="text-[11px] font-black text-white uppercase tracking-tight group-hover:text-nexus-accent transition-colors">{bp.title}</h5>
+                            {bp.isPremium && <Crown size={12} className="text-yellow-500" />}
+                        </div>
+                        <p className="text-[10px] text-gray-600 leading-relaxed line-clamp-2">{bp.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-                     <div className="flex flex-col gap-2">
-                         <div className="flex items-center gap-3">
-                             <div className="w-8 h-8 rounded-full bg-nexus-800 flex items-center justify-center"><User size={14}/></div>
-                             <div className="flex-1 overflow-hidden">
-                                 <div className="text-xs font-bold text-white truncate">{user.displayName || 'Architect'}</div>
-                                 <div className="text-[9px] text-gray-500 truncate">{user.email}</div>
-                             </div>
-                             <button onClick={onOpenSettings} className="p-1.5 hover:bg-nexus-800 rounded text-gray-500 hover:text-white transition-colors" title="Settings"><Settings size={14}/></button>
-                         </div>
-                         <div className="grid grid-cols-2 gap-2 mt-2">
-                             <button onClick={() => setIsReferralOpen(true)} className="flex items-center justify-center gap-1.5 p-2 bg-gradient-to-r from-purple-900 to-nexus-900 border border-purple-800 rounded text-[9px] font-bold text-purple-300 hover:text-white transition-all">
-                                 <Gift size={10}/> Refer
-                             </button>
-                             {/* 🔥 CONDITIONAL RENDER: ADMIN BUTTON */}
-                             {canAccessAdmin && (
-                                 <button onClick={() => setIsAdminOpen(true)} className="flex items-center justify-center gap-1.5 p-2 bg-nexus-900 border border-nexus-800 rounded text-[9px] font-bold text-gray-400 hover:text-white transition-all">
-                                     <ListFilter size={10}/> Admin
-                                 </button>
-                             )}
-                         </div>
-                     </div>
-                 </>
-             ) : (
-                 <button 
-                    onClick={handleLogin} 
-                    disabled={isSigningIn}
-                    className="w-full py-3 bg-nexus-accent text-black rounded-lg text-xs font-bold flex items-center justify-center gap-2"
-                >
-                     {isSigningIn ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14}/>} Sign In
-                 </button>
-             )}
+        {/* Footer Actions */}
+        <div className="p-6 border-t border-white/5 bg-black/40 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <button 
+                onClick={onOpenRegistry}
+                className="py-3 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-white/5"
+            >
+                Registry
+            </button>
+            <button 
+                onClick={onOpenCredentials}
+                className="py-3 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-white/5"
+            >
+                Vault
+            </button>
+          </div>
+          
+          <button 
+            onClick={onClear}
+            className="w-full py-3 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-red-500/20"
+          >
+            Purge Workspace
+          </button>
+
+          {canAccessAdmin && (
+            <button 
+                onClick={() => setIsAdminOpen(true)}
+                className="w-full py-3 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2"
+            >
+                <ShieldCheck size={14} /> System Admin
+            </button>
+          )}
         </div>
       </div>
     </>
   );
 };
+
+const BlockItem: React.FC<{ icon: React.ReactNode, label: string, onClick: () => void }> = ({ icon, label, onClick }) => (
+    <div 
+        onClick={onClick}
+        className="cursor-pointer p-4 bg-white/[0.02] border border-white/5 rounded-2xl hover:border-nexus-wire hover:bg-white/[0.04] transition-all group"
+    >
+        <div className="w-8 h-8 bg-white/5 rounded-lg flex items-center justify-center mb-3 text-gray-500 group-hover:text-nexus-wire group-hover:bg-nexus-wire/10 transition-all">
+            {icon}
+        </div>
+        <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest group-hover:text-white transition-colors">{label}</span>
+    </div>
+);
 
 export default Sidebar;

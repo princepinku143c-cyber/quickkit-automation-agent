@@ -19,7 +19,8 @@ interface AuthContextType {
   logout: () => Promise<void>;
   authError: string | null;
   isDevMode: boolean;
-  bypassAuth: () => void;
+  canUseLocalBypass: boolean;
+  localBypassLogin: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -131,7 +132,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
   
   return (
-    <AuthContext.Provider value={{ user, loading, signInWithGoogle, logout, authError, isDevMode, bypassAuth }}>
+    <AuthContext.Provider value={{ 
+        user, 
+        loading, 
+        signInWithGoogle, 
+        logout, 
+        authError, 
+        isDevMode, 
+        canUseLocalBypass: true, 
+        localBypassLogin: bypassAuth 
+    }}>
       {children}
     </AuthContext.Provider>
   );

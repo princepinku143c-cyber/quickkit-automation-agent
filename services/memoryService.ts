@@ -39,7 +39,7 @@ export const findSimilarWorkflows = (userRequest: string): Blueprint[] => {
         
         const scored = memories.map(bp => {
             let score = 0;
-            const text = (bp.name + " " + bp.description).toLowerCase();
+            const text = (bp.title + " " + bp.description).toLowerCase();
             keywords.forEach(word => {
                 if (text.includes(word)) score++;
             });
