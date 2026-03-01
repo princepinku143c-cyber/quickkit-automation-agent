@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import NexusMascot from './components/NexusMascot';
 import LandingPage from './components/LandingPage';
@@ -17,7 +18,8 @@ import { Play, Cloud, ShieldCheck, Info, Activity, AlertCircle, CheckCircle2, Sa
 import { useAuth } from './context/AuthContext';
 import { useNexusState } from './hooks/useNexusState';
 import { useProjectActions } from './hooks/useProjectActions';
-import { PaymentStatus } from './components/PaymentStatus';
+import { PaymentSuccess, PaymentFailure } from './components/PaymentStatus';
+import { AuthGuard } from './components/AuthGuard';
 import { subscribeToProjects, updateProject, createProject, deleteProject } from './services/projectService';
 import { listPromos } from './services/adminService'; 
 import { subscribeToUserProfile, updateUserProfile } from './services/userService'; 
@@ -103,6 +105,8 @@ const deepClone = <T,>(value: T): T => {
 
 const AppContent: React.FC = () => {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   
   // 1. CORE STATE & ACTIONS (Hooks)
   const {
@@ -117,15 +121,37 @@ const AppContent: React.FC = () => {
   } = useNexusState();
 
   const [appRoute, setAppRoute] = useState<'landing' | 'auth' | 'app'>(() => {
-    const path = window.location.pathname;
+    const path = location.pathname;
     if (path === '/login' || path === '/signup') return 'auth';
     if (path === '/app' || path === '/dashboard' || path === '/billing' || path === '/settings' || path.startsWith('/workflows')) return 'app';
     return 'landing';
   });
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>(() => (window.location.pathname === '/login' ? 'login' : 'signup'));
-  const [currentView, setCurrentView] = useState<'dashboard' | 'editor'>(() => (window.location.pathname.startsWith('/workflows/') ? 'editor' : 'dashboard'));
+
+  useEffect(() => {
+    const path = location.pathname;
+    if (path === '/login' || path === '/signup') {
+        setAppRoute('auth');
+        setAuthMode(path === '/login' ? 'login' : 'signup');
+    } else if (path === '/app' || path === '/dashboard' || path === '/billing' || path === '/settings' || path.startsWith('/workflows')) {
+        setAppRoute('app');
+        if (path.startsWith('/workflows/')) {
+            setCurrentView('editor');
+            const match = path.match(/^\/workflows\/([^/]+)$/);
+            if (match) setRequestedWorkflowId(decodeURIComponent(match[1]));
+        } else {
+            setCurrentView('dashboard');
+        }
+        if (path === '/billing') setIsPricingModalOpen(true);
+        if (path === '/settings') setIsSettingsOpen(true);
+    } else {
+        setAppRoute('landing');
+    }
+  }, [location]);
+
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>(() => (location.pathname === '/login' ? 'login' : 'signup'));
+  const [currentView, setCurrentView] = useState<'dashboard' | 'editor'>(() => (location.pathname.startsWith('/workflows/') ? 'editor' : 'dashboard'));
   const [requestedWorkflowId, setRequestedWorkflowId] = useState<string | null>(() => {
-    const match = window.location.pathname.match(/^\/workflows\/([^/]+)$/);
+    const match = location.pathname.match(/^\/workflows\/([^/]+)$/);
     return match ? decodeURIComponent(match[1]) : null;
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -135,10 +161,10 @@ const AppContent: React.FC = () => {
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
   const [isCredentialManagerOpen, setIsCredentialManagerOpen] = useState(false);
   const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
-  const [isPricingModalOpen, setIsPricingModalOpen] = useState(() => window.location.pathname === '/billing');
+  const [isPricingModalOpen, setIsPricingModalOpen] = useState(() => location.pathname === '/billing');
   const [pricingReason, setPricingReason] = useState<string | undefined>(undefined); 
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(() => window.location.pathname === '/settings'); 
+  const [isSettingsOpen, setIsSettingsOpen] = useState(() => location.pathname === '/settings'); 
   const [isDemoOpen, setIsDemoOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -338,14 +364,11 @@ const AppContent: React.FC = () => {
 
   // 2. NON-HOOK LOGIC & RENDER GATES
   const handleNavigate = (route: 'signup' | 'login') => {
-      setAuthMode(route);
-      setAppRoute('auth');
-      window.history.pushState({}, '', route === 'login' ? '/login' : '/signup');
+      navigate(route === 'login' ? '/login' : '/signup');
   };
 
   const handleBackToLanding = () => {
-      setAppRoute('landing');
-      window.history.pushState({}, '', '/');
+      navigate('/');
   };
 
   const completeOnboarding = async () => {
@@ -381,57 +404,11 @@ const AppContent: React.FC = () => {
   const handleNavigateDashboard = () => {
       setCurrentView('dashboard');
       localStorage.setItem('nexus_last_view', 'dashboard');
-      if (user) window.history.pushState({}, '', '/app');
+      navigate('/dashboard');
   };
 
-  const params = new URLSearchParams(window.location.search);
-  
-  if (params.get('payment_success') === 'true') {
-    const expectedState = sessionStorage.getItem('nexus_paypal_state');
-    const incomingState = params.get('state');
-
-    if (!expectedState || !incomingState || expectedState !== incomingState) {
-      return <PaymentStatus type="cancel" />;
-    }
-
-    sessionStorage.removeItem('nexus_paypal_state');
-    return (
-      <PaymentStatus
-        type="success"
-        orderToken={params.get('token') || undefined}
-      />
-    );
-  }
-  if (params.get('payment_cancel') === 'true') {
-    sessionStorage.removeItem('nexus_paypal_state');
-    return <PaymentStatus type="cancel" />;
-  }
-
-  if (!user && appRoute === 'landing') {
-      return (
-        <div className="min-h-screen bg-[#050505] w-full">
-            <Toaster position="top-center" />
-            <LandingPage onNavigate={handleNavigate} onDemo={() => setIsDemoOpen(true)} />
-            <Suspense fallback={null}>
-                <VideoModal isOpen={isDemoOpen} onClose={() => setIsDemoOpen(false)} />
-            </Suspense>
-        </div>
-      );
-  }
-
-  if (!user && appRoute === 'auth') {
-      return (
-        <div className="min-h-screen bg-[#050505] w-full">
-            <Toaster position="top-center" />
-            <AuthPage view={authMode} onBack={handleBackToLanding} />
-        </div>
-      );
-  }
-
-  // --- APP LOGIC (AUTHENTICATED) ---
-
-  return (
-    <div className="flex h-screen bg-[#050505] text-white overflow-hidden relative font-sans">
+  const renderMainApp = () => (
+    <div className="flex h-screen bg-[#050505] text-white overflow-hidden relative font-sans w-full">
       <Toaster position="top-right" toastOptions={{
           style: {
               background: '#1a1a1a',
@@ -443,7 +420,7 @@ const AppContent: React.FC = () => {
       <Suspense fallback={null}>
           <PricingModal 
             isOpen={isPricingModalOpen} 
-            onClose={() => { setIsPricingModalOpen(false); setPricingReason(undefined); }} 
+            onClose={() => { setIsPricingModalOpen(false); setPricingReason(undefined); navigate(location.pathname === '/billing' ? '/dashboard' : location.pathname); }} 
             onUpgrade={handleUpgrade}
             triggerReason={pricingReason} 
           />
@@ -476,7 +453,7 @@ const AppContent: React.FC = () => {
 
       <SettingsModal 
           isOpen={isSettingsOpen} 
-          onClose={() => setIsSettingsOpen(false)} 
+          onClose={() => { setIsSettingsOpen(false); navigate(location.pathname === '/settings' ? '/dashboard' : location.pathname); }} 
           onUpgrade={() => setIsPricingModalOpen(true)}
           userPlan={fullPlan || { tier: 'FREE', autoRenew: true, credits: 5, aiUsed: 0, monthlyLimit: 5, uid: user?.uid || '', email: user?.email || '', region: 'GLOBAL', role: 'USER', status: 'active', expiresAt: 0, updatedAt: Date.now() }}
       />
@@ -513,7 +490,7 @@ const AppContent: React.FC = () => {
             setIsMobileSidebarOpen(false);
         }}
         onClear={() => { setNexuses([]); setSynapses([]); }}
-        onOpenSettings={() => { setIsSettingsOpen(true); setIsMobileSidebarOpen(false); }} 
+        onOpenSettings={() => { navigate('/settings'); setIsMobileSidebarOpen(false); }} 
         onNavigateProjects={() => { handleNavigateDashboard(); setIsMobileSidebarOpen(false); }}
         currentView={currentView}
         onOpenCredentials={() => { setIsCredentialManagerOpen(true); setIsMobileSidebarOpen(false); }}
@@ -591,6 +568,36 @@ const AppContent: React.FC = () => {
         </Suspense>
       </div>
     </div>
+  );
+
+  return (
+    <Routes>
+        <Route path="/" element={
+            !user ? (
+                <div className="min-h-screen bg-[#050505] w-full">
+                    <Toaster position="top-center" />
+                    <LandingPage onNavigate={handleNavigate} onDemo={() => setIsDemoOpen(true)} />
+                    <Suspense fallback={null}>
+                        <VideoModal isOpen={isDemoOpen} onClose={() => setIsDemoOpen(false)} />
+                    </Suspense>
+                </div>
+            ) : <Navigate to="/dashboard" replace />
+        } />
+
+        <Route path="/login" element={<AuthPage view="login" onBack={handleBackToLanding} />} />
+        <Route path="/signup" element={<AuthPage view="signup" onBack={handleBackToLanding} />} />
+        
+        <Route path="/payment-success" element={<PaymentSuccess />} />
+        <Route path="/payment-failure" element={<PaymentFailure />} />
+
+        <Route path="/dashboard" element={<AuthGuard>{renderMainApp()}</AuthGuard>} />
+        <Route path="/app" element={<AuthGuard>{renderMainApp()}</AuthGuard>} />
+        <Route path="/billing" element={<AuthGuard>{renderMainApp()}</AuthGuard>} />
+        <Route path="/settings" element={<AuthGuard>{renderMainApp()}</AuthGuard>} />
+        <Route path="/workflows/:id" element={<AuthGuard>{renderMainApp()}</AuthGuard>} />
+        
+        <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 };
 

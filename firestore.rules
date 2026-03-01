@@ -1,65 +1,36 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
     match /users/{userId} {
-      allow read, write: if request.auth != null 
-        && request.auth.uid == userId;
-    }
-
-    match /coupons/{couponId} {
-      allow read: if true;
-      allow write: if false;
-    }
-
-    match /referrals/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
-
-    match /usage_quotas/{quotaId} {
-      allow read, write: if request.auth != null;
-    }
-
-    match /active_runs/{runId} {
-      allow read, write: if request.auth != null;
-    }
-
-    match /execution_logs/{logId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-    }
-
-    match /blueprints/{blueprintId} {
-      allow read: if true;
-      allow write: if request.auth != null;
-    }
-
-    match /architect_memory/{memoryId} {
-      allow read: if true;
-      allow create: if request.auth != null;
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['tier', 'status', 'provider', 'plan']);
+      allow delete: if false;
     }
 
     match /projects/{projectId} {
-      allow read, write: if request.auth != null
-        && request.auth.uid == resource.data.userId;
-      // Allow create if user is authenticated and setting their own ID
-      allow create: if request.auth != null 
-        && request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
 
     match /payments/{paymentId} {
-        // Only admins can read payments, or users can read their own
-        allow read: if request.auth != null && (
-            resource.data.userId == request.auth.uid || 
-            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN'
-        );
-        allow write: if false; // Only via Backend SDK
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create, update, delete: if false;
     }
 
-    match /{document=**} {
-      allow read, write: if false;
+    match /coupons/{couponId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
     }
   }
 }
