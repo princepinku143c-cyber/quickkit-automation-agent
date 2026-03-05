@@ -14,7 +14,8 @@ import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage'; 
 import { SettingsModal } from './components/SettingsModal';
 import { Nexus, Synapse, Project, ExecutionState, NexusType, NexusSubtype, PlanTier, UserPlan } from './types';
-import { Play, Cloud, ShieldCheck, Info, Activity, AlertCircle, CheckCircle2, Save, AlertTriangle, Lock, Loader2, PartyPopper, XCircle, Menu, X, LayoutGrid } from 'lucide-react';
+import { GitHubService } from './services/githubService';
+import { Play, Cloud, ShieldCheck, Info, Activity, AlertCircle, CheckCircle2, Save, AlertTriangle, Lock, Loader2, PartyPopper, XCircle, Menu, X, LayoutGrid, Github, Rocket } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { useNexusState } from './hooks/useNexusState';
 import { useProjectActions } from './hooks/useProjectActions';
@@ -161,6 +162,34 @@ const AppContent: React.FC = () => {
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
   const [isCredentialManagerOpen, setIsCredentialManagerOpen] = useState(false);
   const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(false);
+
+  const handleGitHubDeploy = async () => {
+      if (!currentProject) return;
+      
+      const repoName = window.prompt("Enter GitHub Repository (e.g. username/repo):", localStorage.getItem('nexus_github_repo') || "");
+      if (!repoName) return;
+      
+      const token = window.prompt("Enter GitHub Personal Access Token (PAT):", localStorage.getItem('nexus_github_token') || "");
+      if (!token) return;
+
+      localStorage.setItem('nexus_github_repo', repoName);
+      localStorage.setItem('nexus_github_token', token);
+
+      setIsDeploying(true);
+      const toastId = toast.loading("Pushing to GitHub...");
+
+      try {
+          const result = await GitHubService.pushToGitHub(repoName, token, currentProject, nexuses, synapses);
+          toast.success("Successfully pushed to GitHub! Build & Repair starting...", { id: toastId });
+          window.open(result.url, '_blank');
+      } catch (error: any) {
+          console.error("Deploy Error:", error);
+          toast.error(`GitHub Push Failed: ${error.message}`, { id: toastId });
+      } finally {
+          setIsDeploying(false);
+      }
+  };
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(() => location.pathname === '/billing');
   const [pricingReason, setPricingReason] = useState<string | undefined>(undefined); 
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
@@ -253,6 +282,33 @@ const AppContent: React.FC = () => {
 
     return () => clearTimeout(timeoutId);
   }, [nexuses, synapses, currentProject, currentView, syncStatus, setSyncStatus]);
+
+  // --- AUTO-SAVE TO CLOUD ---
+  useEffect(() => {
+      if (syncStatus !== 'dirty' || !currentProject || !user) return;
+
+      const saveToCloud = async () => {
+          setSyncStatus('saving');
+          try {
+              await updateProject(currentProject.id, {
+                  nexuses,
+                  synapses,
+                  updatedAt: Date.now()
+              });
+              setSyncStatus('synced');
+              // Clear local draft after successful cloud save to prevent stale overwrites
+              localStorage.removeItem(`nexus_draft_${currentProject.id}`);
+          } catch (error) {
+              console.error("Cloud Save Failed:", error);
+              setSyncStatus('dirty'); // Retry on next pass
+              toast.error("Cloud save failed. Retrying...");
+          }
+      };
+
+      // Debounce cloud save slightly longer than local save
+      const timer = setTimeout(saveToCloud, 2000);
+      return () => clearTimeout(timer);
+  }, [syncStatus, currentProject, user, nexuses, synapses, setSyncStatus]);
 
   useEffect(() => {
       const lastProjectId = localStorage.getItem('nexus_last_project_id');
@@ -519,6 +575,16 @@ const AppContent: React.FC = () => {
             )}
           </div>
           <div className="flex items-center gap-2">
+             {currentView === 'editor' && (
+               <button 
+                 onClick={handleGitHubDeploy}
+                 disabled={isDeploying}
+                 className="flex items-center gap-2 px-3 py-1.5 bg-nexus-900 border border-nexus-800 rounded-lg text-[10px] font-black uppercase text-gray-400 hover:text-white hover:border-nexus-accent transition-all disabled:opacity-50"
+               >
+                 {isDeploying ? <Activity size={14} className="animate-spin" /> : <Github size={14} />}
+                 <span>Deploy to GitHub</span>
+               </button>
+             )}
              <div className="text-[9px] font-black uppercase bg-nexus-900 border border-nexus-800 px-2 py-1 rounded text-nexus-accent">
                  {userPlan} PLAN
              </div>
