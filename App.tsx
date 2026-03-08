@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { GitHubService } from "./services/githubService";
+import { GitHubService } from "./services/GithubService";
 import Sidebar from './components/Sidebar';
 import NexusMascot from './components/NexusMascot';
 import LandingPage from './components/LandingPage';
