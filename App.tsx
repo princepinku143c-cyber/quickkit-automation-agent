@@ -180,7 +180,6 @@ const AppContent: React.FC = () => {
 
       try {
           toast.success("Successfully pushed to GitHub! Build & Repair starting...", { id: toastId });
-          window.open(result.url, '_blank');
       } catch (error: any) {
           console.error("Deploy Error:", error);
           toast.error(`GitHub Push Failed: ${error.message}`, { id: toastId });
