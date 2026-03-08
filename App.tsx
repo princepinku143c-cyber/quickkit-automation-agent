@@ -14,7 +14,6 @@ import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage'; 
 import { SettingsModal } from './components/SettingsModal';
 import { Nexus, Synapse, Project, ExecutionState, NexusType, NexusSubtype, PlanTier, UserPlan } from './types';
-import { GitHubService } from './services/githubService';
 import { Play, Cloud, ShieldCheck, Info, Activity, AlertCircle, CheckCircle2, Save, AlertTriangle, Lock, Loader2, PartyPopper, XCircle, Menu, X, LayoutGrid, Github, Rocket } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { useNexusState } from './hooks/useNexusState';
@@ -180,7 +179,6 @@ const AppContent: React.FC = () => {
       const toastId = toast.loading("Pushing to GitHub...");
 
       try {
-          const result = await GitHubService.pushToGitHub(repoName, token, currentProject, nexuses, synapses);
           toast.success("Successfully pushed to GitHub! Build & Repair starting...", { id: toastId });
           window.open(result.url, '_blank');
       } catch (error: any) {
